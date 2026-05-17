@@ -1,0 +1,27 @@
+{
+  "name": "tracepad",
+  "version": "0.3.0",
+  "description": "Debugging flight recorder CLI for handoffs, PR briefs, and incident replay.",
+  "bin": {
+    "tracepad": "./bin/tracepad.js"
+  },
+  "scripts": {
+    "demo": "node ./bin/tracepad.js --help",
+    "capture:help": "node ./bin/tracepad.js capture --help",
+    "record:help": "node ./bin/tracepad.js record --help",
+    "tui:help": "node ./bin/tracepad.js tui --help"
+  },
+  "keywords": [
+    "debugging",
+    "incident",
+    "handoff",
+    "terminal",
+    "tui",
+    "engineering",
+    "cli",
+    "flight-recorder",
+    "devtools",
+    "postmortem"
+  ],
+  "license": "MIT"
+}
