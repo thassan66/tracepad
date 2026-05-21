@@ -1,15 +1,20 @@
 {
   "name": "tracepad",
-  "version": "0.3.0",
-  "description": "Debugging flight recorder CLI for handoffs, PR briefs, and incident replay.",
+  "version": "0.5.1",
+  "description": "Debugging flight recorder CLI for handoffs, PR briefs, incident replay, and reproducible investigation trails.",
   "bin": {
-    "tracepad": "./bin/tracepad.js"
+    "tracepad": "./bin/tracepad"
   },
   "scripts": {
     "demo": "node ./bin/tracepad.js --help",
     "capture:help": "node ./bin/tracepad.js capture --help",
     "record:help": "node ./bin/tracepad.js record --help",
-    "tui:help": "node ./bin/tracepad.js tui --help"
+    "tui:help": "node ./bin/tracepad.js tui --help",
+    "replay:help": "node ./bin/tracepad.js replay --help",
+    "alias:setup": "node ./bin/tracepad.js alias setup",
+    "export:slack": "node ./bin/tracepad.js export --exporter slack",
+    "demo:hero": "vhs docs/demo/hero.tape",
+    "demo:hero:docker": "docker build -f docs/demo/Dockerfile.vhs -t tracepad-vhs . && docker run --rm -v \"%cd%:/work\" -w /work tracepad-vhs docs/demo/hero.tape"
   },
   "keywords": [
     "debugging",
@@ -21,7 +26,11 @@
     "cli",
     "flight-recorder",
     "devtools",
-    "postmortem"
+    "postmortem",
+    "git-hooks",
+    "incident-response",
+    "shell-integration",
+    "plugins"
   ],
   "license": "MIT"
 }

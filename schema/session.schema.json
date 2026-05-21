@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://tracepad.dev/schema/session.schema.json",
+  "title": "Tracepad Session",
+  "type": "object",
+  "required": ["id", "title", "status", "createdAt", "updatedAt", "repoRoot", "events"],
+  "additionalProperties": true,
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "title": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": ["active", "closed"]
+    },
+    "createdAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "repoRoot": {
+      "type": "string"
+    },
+    "branch": {
+      "type": ["string", "null"]
+    },
+    "startedBy": {
+      "type": "string"
+    },
+    "summary": {
+      "type": "string"
+    },
+    "events": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/event"
+      }
+    }
+  },
+  "$defs": {
+    "event": {
+      "type": "object",
+      "required": ["type", "at"],
+      "additionalProperties": true,
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["note", "command", "attachment", "snapshot", "status"]
+        },
+        "at": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "kind": {
+          "type": "string",
+          "enum": ["note", "finding", "hypothesis", "decision", "blocker", "context"]
+        },
+        "text": {
+          "type": "string"
+        },
+        "command": {
+          "type": "string"
+        },
+        "exitCode": {
+          "type": ["integer", "null"]
+        },
+        "source": {
+          "type": "string"
+        },
+        "originalPath": {
+          "type": "string"
+        },
+        "storedPath": {
+          "type": "string"
+        },
+        "snapshotKind": {
+          "type": "string"
+        },
+        "changedFiles": {
+          "type": "integer"
+        },
+        "note": {
+          "type": "string"
+        },
+        "state": {
+          "type": "string"
+        }
+      }
+    }
+  }
+}

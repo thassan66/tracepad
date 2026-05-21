@@ -7,16 +7,15 @@ const path = require("path");
 const readline = require("readline");
 
 const TOOL_NAME = "Tracepad";
-const TOOL_VERSION = "0.3.0";
+const TOOL_VERSION = "0.5.1";
 const NOTE_KINDS = new Set(["note", "finding", "hypothesis", "decision", "blocker", "context"]);
-const EXPORT_TEMPLATES = new Set(["handoff", "issue", "pr", "postmortem"]);
-const EXPORT_FORMATS = new Set(["markdown", "html"]);
+const EXPORT_TEMPLATES = new Set(["handoff", "issue", "pr", "postmortem", "slack"]);
+const EXPORT_FORMATS = new Set(["markdown", "html", "json"]);
+const REPLAY_FORMATS = new Set(["shell", "markdown"]);
 const ANSI = {
   reset: "\x1b[0m",
   bold: "\x1b[1m",
-  dim: "\x1b[2m",
   cyan: "\x1b[36m",
-  magenta: "\x1b[35m",
   yellow: "\x1b[33m",
   green: "\x1b[32m",
   red: "\x1b[31m",
@@ -24,8 +23,7 @@ const ANSI = {
 };
 
 async function main() {
-  const argv = process.argv.slice(2);
-  const parsed = parseArgv(argv);
+  const parsed = parseArgv(process.argv.slice(2));
   const command = parsed.command;
   const flags = parsed.flags;
   const args = parsed.positionals;
@@ -39,7 +37,10 @@ async function main() {
 
   switch (command) {
     case "init":
-      handleInit(repoRoot);
+      handleInit(repoRoot, flags);
+      return;
+    case "alias":
+      handleAlias(args, flags);
       return;
     case "start":
       handleStart(repoRoot, args, flags);
@@ -67,6 +68,18 @@ async function main() {
       return;
     case "history":
       handleHistoryImport(repoRoot, flags);
+      return;
+    case "parse":
+      await handleParse(repoRoot, args, flags);
+      return;
+    case "replay":
+      handleReplay(repoRoot, args, flags);
+      return;
+    case "import":
+      await handlePluginImport(repoRoot, args, flags);
+      return;
+    case "branch-sync":
+      handleBranchSync(repoRoot, flags);
       return;
     case "diff":
       handleDiffSnapshot(repoRoot, flags);
@@ -132,9 +145,36 @@ function parseArgv(argv) {
   return { command, flags, positionals };
 }
 
-function handleInit(repoRoot) {
+function handleInit(repoRoot, flags) {
   ensureStore(repoRoot);
+  if (!flags["no-gitignore"]) {
+    updateGitignore(repoRoot);
+  }
+  if (flags.hooks) {
+    installHooks(repoRoot);
+  }
   process.stdout.write(`${TOOL_NAME} store ready at ${storeDir(repoRoot)}\n`);
+}
+
+function handleAlias(args, flags) {
+  const subcommand = firstArg(args);
+  if (subcommand !== "setup") {
+    fail("Usage: tracepad alias setup [--shell bash|zsh|powershell] [--install]");
+  }
+
+  const shell = determineShellName(flags.shell);
+  const snippet = renderShellIntegration(shell);
+  if (flags.install) {
+    const profilePath = resolveShellProfile(shell);
+    if (!profilePath) {
+      fail(`Cannot auto-install shell integration for ${shell}. Print the snippet and add it manually.`);
+    }
+    upsertProfileBlock(profilePath, snippet);
+    process.stdout.write(`Installed Tracepad shell integration in ${profilePath}\n`);
+    return;
+  }
+
+  process.stdout.write(`${snippet}\n`);
 }
 
 function handleStart(repoRoot, args, flags) {
@@ -152,22 +192,23 @@ async function handleRecord(repoRoot, args, flags) {
   setActiveSessionId(repoRoot, session.id);
 
   const captured = [];
+
   if (!flags["no-status-snapshot"]) {
-    const statusResult = captureGitStatusSnapshot(repoRoot, session, "Session baseline");
-    if (statusResult.captured) {
+    const result = captureGitStatusSnapshot(repoRoot, session, "Session baseline");
+    if (result.captured) {
       captured.push("git status");
     }
   }
 
   if (!flags["no-history"]) {
-    const historyResult = importHistoryIntoSession(repoRoot, session, {
+    const result = importHistoryIntoSession(repoRoot, session, {
       shell: flags.shell,
       file: flags.file,
       limit: flags["history-limit"] !== undefined ? Number(flags["history-limit"]) : 12,
       silent: true,
     });
-    if (historyResult.imported > 0) {
-      captured.push(`${historyResult.imported} history cmd(s)`);
+    if (result.imported > 0) {
+      captured.push(`${result.imported} history cmd(s)`);
     }
   }
 
@@ -176,6 +217,7 @@ async function handleRecord(repoRoot, args, flags) {
   if (captured.length > 0) {
     process.stdout.write(`Bootstrapped with ${captured.join(", ")}\n`);
   }
+
   await handleCapture(repoRoot, { session: session.id });
 }
 
@@ -185,7 +227,6 @@ function handleUse(repoRoot, args) {
   if (!sessionId) {
     fail("Usage: tracepad use <session-id>");
   }
-
   const session = readSession(repoRoot, sessionId);
   setActiveSessionId(repoRoot, session.id);
   process.stdout.write(`Active session set to ${session.id}: ${session.title}\n`);
@@ -201,8 +242,7 @@ function handleList(repoRoot) {
     return;
   }
 
-  const lines = [];
-  lines.push(`${TOOL_NAME} sessions`);
+  const lines = [`${TOOL_NAME} sessions`];
   for (const session of sessions) {
     const marker = session.id === activeId ? "*" : " ";
     const summary = summarizeSession(session);
@@ -220,7 +260,7 @@ function handleStatus(repoRoot, args, flags) {
   const summary = summarizeSession(session);
   const lines = [];
 
-  lines.push(`${TOOL_NAME}`);
+  lines.push(TOOL_NAME);
   lines.push(`Session: ${session.id}`);
   lines.push(`Title: ${session.title}`);
   lines.push(`Status: ${session.status}`);
@@ -242,12 +282,12 @@ function handleStatus(repoRoot, args, flags) {
   lines.push("");
   lines.push("Recent timeline:");
 
-  const recentEvents = session.events.slice(-8);
-  if (recentEvents.length === 0) {
+  const recent = session.events.slice(-8);
+  if (recent.length === 0) {
     lines.push("  - none");
   } else {
-    for (const event of recentEvents) {
-      lines.push(`  - ${renderEventLine(event)}`);
+    for (const event of recent) {
+      lines.push(`  - ${renderEventLine(event, session.createdAt)}`);
     }
   }
 
@@ -268,40 +308,103 @@ async function handleTui(repoRoot, args, flags) {
   process.stdin.setRawMode(true);
   process.stdin.resume();
 
+  let flashMessage = "";
+  let selectedIndex = 0;
+  let previewOffset = 0;
+
   const rerender = () => {
     const fresh = readSession(repoRoot, session.id);
-    process.stdout.write(renderTuiScreen(fresh));
+    const visibleEvents = fresh.events.slice(-8);
+    selectedIndex = Math.max(0, Math.min(selectedIndex, Math.max(visibleEvents.length - 1, 0)));
+    const preview = buildTuiPreview(repoRoot, fresh, visibleEvents[selectedIndex], previewOffset);
+    previewOffset = preview.offset;
+    process.stdout.write(renderTuiScreen(fresh, flashMessage, { selectedIndex, preview }));
+    flashMessage = "";
   };
 
   rerender();
 
   await new Promise((resolve) => {
-    const onKeypress = (str, key) => {
+    const cleanup = () => {
+      process.stdin.removeListener("keypress", onKeypress);
+      process.stdin.setRawMode(false);
+      process.stdout.write("\x1b[0m\x1b[?25h");
+    };
+
+    const onKeypress = async (str, key) => {
       if (!key) {
         return;
       }
+
       if (key.name === "q" || (key.ctrl && key.name === "c")) {
         cleanup();
         resolve();
         return;
       }
+
       if (key.name === "r") {
         rerender();
         return;
       }
+
       if (key.name === "e") {
         const outputPath = defaultExportPath(repoRoot, session.id, "html");
         const fresh = readSession(repoRoot, session.id);
         fs.mkdirSync(path.dirname(outputPath), { recursive: true });
         fs.writeFileSync(outputPath, `${renderExport(fresh, { format: "html", template: "handoff" })}\n`, "utf8");
-        process.stdout.write(renderTuiScreen(fresh, `Exported HTML to ${outputPath}`));
+        flashMessage = `Exported HTML to ${outputPath}`;
+        rerender();
+        return;
       }
-    };
 
-    const cleanup = () => {
-      process.stdin.removeListener("keypress", onKeypress);
-      process.stdin.setRawMode(false);
-      process.stdout.write("\x1b[0m\x1b[?25h");
+      if (key.name === "d") {
+        handleDiffSnapshot(repoRoot, { session: session.id, note: "Captured from TUI" });
+        selectedIndex = Math.max(0, readSession(repoRoot, session.id).events.slice(-8).length - 1);
+        previewOffset = 0;
+        flashMessage = "Captured git diff snapshot";
+        rerender();
+        return;
+      }
+
+      if (key.name === "n") {
+        const answer = await promptTuiTextInput(process.stdin, process.stdout, "note> ");
+        if (answer.trim()) {
+          handleNote(repoRoot, [answer.trim()], { session: session.id, kind: "note" });
+          selectedIndex = Math.max(0, readSession(repoRoot, session.id).events.slice(-8).length - 1);
+          previewOffset = 0;
+          flashMessage = "Added note";
+        }
+        rerender();
+        return;
+      }
+
+      if (key.name === "left" || str === "[") {
+        selectedIndex = Math.max(0, selectedIndex - 1);
+        previewOffset = 0;
+        rerender();
+        return;
+      }
+
+      if (key.name === "right" || str === "]") {
+        const fresh = readSession(repoRoot, session.id);
+        const maxIndex = Math.max(0, fresh.events.slice(-8).length - 1);
+        selectedIndex = Math.min(maxIndex, selectedIndex + 1);
+        previewOffset = 0;
+        rerender();
+        return;
+      }
+
+      if (key.name === "down" || key.name === "j") {
+        previewOffset += 1;
+        rerender();
+        return;
+      }
+
+      if (key.name === "up" || key.name === "k") {
+        previewOffset = Math.max(0, previewOffset - 1);
+        rerender();
+        return;
+      }
     };
 
     process.stdin.on("keypress", onKeypress);
@@ -311,7 +414,7 @@ async function handleTui(repoRoot, args, flags) {
 function handleNote(repoRoot, args, flags) {
   ensureStore(repoRoot);
   const session = resolveSession(repoRoot, args, flags, { allowPositionalId: false });
-  const text = joinArgs(args);
+  const text = redactText(joinArgs(args));
   if (!text) {
     fail("Usage: tracepad note \"what you found\" [--kind finding|hypothesis|decision|blocker|context]");
   }
@@ -326,19 +429,20 @@ function handleNote(repoRoot, args, flags) {
 function handleCommandEvent(repoRoot, args, flags) {
   ensureStore(repoRoot);
   const session = resolveSession(repoRoot, args, flags, { allowPositionalId: false });
-  const commandText = joinArgs(args);
+  const commandText = redactText(joinArgs(args));
   if (!commandText) {
     fail("Usage: tracepad cmd \"mvn test -Dtest=FooTest\" [--exit-code 1] [--note \"what happened\"]");
   }
 
   const exitCode = flags["exit-code"] !== undefined ? Number(flags["exit-code"]) : null;
-  const note = flags.note ? String(flags.note).trim() : "";
+  const note = flags.note ? redactText(String(flags.note).trim()) : "";
+  const source = flags.source ? redactText(String(flags.source).trim()) : "manual";
   session.events.push(
     createEvent("command", {
       command: commandText,
       exitCode: Number.isFinite(exitCode) ? exitCode : null,
       note,
-      source: "manual",
+      source: source || "manual",
     })
   );
   touchSession(session);
@@ -387,7 +491,7 @@ function importHistoryIntoSession(repoRoot, session, options) {
   for (const command of recent) {
     session.events.push(
       createEvent("command", {
-        command,
+        command: redactText(command),
         exitCode: null,
         note: `Imported from ${shell} history`,
         source: "history",
@@ -402,12 +506,134 @@ function importHistoryIntoSession(repoRoot, session, options) {
   return { imported: recent.length, historyFile };
 }
 
+async function handleParse(repoRoot, args, flags) {
+  ensureStore(repoRoot);
+  const session = resolveSession(repoRoot, args, flags, { allowPositionalId: false });
+  const sourceArg = firstArg(args);
+  if (!sourceArg) {
+    fail("Usage: tracepad parse <log-file> [--context-lines 2] [--note \"why this matters\"]");
+  }
+
+  const sourcePath = path.isAbsolute(sourceArg) ? sourceArg : path.resolve(repoRoot, sourceArg);
+  if (!fs.existsSync(sourcePath) || !fs.statSync(sourcePath).isFile()) {
+    fail(`Parse target not found or not a file: ${sourcePath}`);
+  }
+
+  const contextLines = flags["context-lines"] !== undefined ? Number(flags["context-lines"]) : 2;
+  if (!Number.isFinite(contextLines) || contextLines < 0) {
+    fail("Invalid --context-lines value");
+  }
+
+  const maxMatches = flags["max-matches"] !== undefined ? Number(flags["max-matches"]) : 200;
+  if (!Number.isFinite(maxMatches) || maxMatches <= 0) {
+    fail("Invalid --max-matches value");
+  }
+
+  const result = await extractHighSignalLogSnippetFromFile(sourcePath, contextLines, maxMatches);
+  if (!result.snippet.trim()) {
+    process.stdout.write("No high-signal error lines found in the target file.\n");
+    return;
+  }
+
+  const storedPath = storeArtifactText(repoRoot, session.id, redactText(result.snippet), `${path.basename(sourcePath)}.snippet.txt`);
+  session.events.push(
+    createEvent("snapshot", {
+      snapshotKind: "parsed-log",
+      storedPath,
+      changedFiles: result.matchCount,
+      note: redactText(flags.note ? String(flags.note).trim() : `Extracted ${result.matchCount} high-signal log match(es)`),
+    })
+  );
+  touchSession(session);
+  writeSession(repoRoot, session);
+  process.stdout.write(`Parsed ${sourcePath} into ${storedPath}\n`);
+}
+
+function handleReplay(repoRoot, args, flags) {
+  ensureStore(repoRoot);
+  const session = resolveSession(repoRoot, args, flags, { allowPositionalId: true });
+  const format = normalizeReplayFormat(flags.format || (flags.markdown ? "markdown" : "shell"));
+  const output = renderReplay(session, format);
+  const outputPath = flags.output ? path.resolve(String(flags.output)) : null;
+
+  if (!outputPath) {
+    process.stdout.write(`${output}\n`);
+    return;
+  }
+
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+  fs.writeFileSync(outputPath, `${output}\n`, "utf8");
+  process.stdout.write(`Replayed session ${session.id} to ${outputPath}\n`);
+}
+
+async function handlePluginImport(repoRoot, args, flags) {
+  ensureStore(repoRoot);
+  const importerName = firstArg(args);
+  if (!importerName) {
+    fail("Usage: tracepad import <importer-name> [--file <path>] [--note \"why it matters\"]");
+  }
+
+  const session = resolveSession(repoRoot, [], flags, { allowPositionalId: false });
+  const plugin = loadPlugin(repoRoot, "importers", importerName);
+  if (!plugin || typeof plugin.importSessionData !== "function") {
+    fail(`Importer ${importerName} must export importSessionData(context).`);
+  }
+
+  const result = await plugin.importSessionData({
+    repoRoot,
+    session,
+    args: args.slice(1),
+    flags,
+    helpers: createPluginHelpers(repoRoot, session),
+  }) || {};
+
+  const events = Array.isArray(result.events) ? result.events : [];
+  for (const event of events) {
+    session.events.push({ at: isoNow(), ...event });
+  }
+
+  if (events.length > 0) {
+    touchSession(session);
+    writeSession(repoRoot, session);
+  }
+
+  process.stdout.write(`Importer ${importerName} added ${events.length} event(s) to ${session.id}\n`);
+}
+
+function handleBranchSync(repoRoot, flags) {
+  ensureStore(repoRoot);
+  const branch = detectGitBranch(repoRoot);
+  if (!branch) {
+    process.stdout.write("No git branch detected for branch sync.\n");
+    return;
+  }
+
+  const matched = findBranchSession(repoRoot, branch);
+  if (matched) {
+    setActiveSessionId(repoRoot, matched.id);
+    process.stdout.write(`Active session set to ${matched.id} for branch ${branch}\n`);
+    return;
+  }
+
+  if (!flags["create-if-missing"]) {
+    process.stdout.write(`No existing session found for branch ${branch}\n`);
+    return;
+  }
+
+  const session = createSession(repoRoot, [`Branch ${branch}`], { context: `Auto-created for branch ${branch}` });
+  writeSession(repoRoot, session);
+  setActiveSessionId(repoRoot, session.id);
+  process.stdout.write(`Created session ${session.id} for branch ${branch}\n`);
+}
+
 function handleDiffSnapshot(repoRoot, flags) {
   ensureStore(repoRoot);
   const session = resolveSession(repoRoot, [], flags, { allowPositionalId: false });
   const staged = Boolean(flags.staged);
-  const diffArgs = staged ? ["diff", "--staged", "--no-color"] : ["diff", "--no-color"];
-  const git = runGit(repoRoot, diffArgs);
+  const commitRef = flags.commit ? String(flags.commit).trim() : "";
+  const git = commitRef
+    ? runGit(repoRoot, ["show", "--no-color", commitRef])
+    : runGit(repoRoot, staged ? ["diff", "--staged", "--no-color"] : ["diff", "--no-color"]);
 
   if (git.error) {
     fail(`Could not capture git diff: ${git.error}`);
@@ -419,19 +645,19 @@ function handleDiffSnapshot(repoRoot, flags) {
     return;
   }
 
-  const relativeStoredPath = storeArtifactText(repoRoot, session.id, diffText, `${staged ? "staged" : "working-tree"}-diff.patch`);
-  const changedFiles = countChangedFiles(diffText);
+  const fileName = commitRef ? `commit-${sanitizeFileName(commitRef)}.patch` : `${staged ? "staged" : "working-tree"}-diff.patch`;
+  const storedPath = storeArtifactText(repoRoot, session.id, diffText, fileName);
   session.events.push(
     createEvent("snapshot", {
-      snapshotKind: staged ? "git-diff-staged" : "git-diff",
-      storedPath: relativeStoredPath,
-      changedFiles,
-      note: flags.note ? String(flags.note).trim() : "",
+      snapshotKind: commitRef ? "git-show" : staged ? "git-diff-staged" : "git-diff",
+      storedPath,
+      changedFiles: countChangedFiles(diffText),
+      note: redactText(flags.note ? String(flags.note).trim() : ""),
     })
   );
   touchSession(session);
   writeSession(repoRoot, session);
-  process.stdout.write(`Captured git diff snapshot to ${relativeStoredPath}\n`);
+  process.stdout.write(`Captured git diff snapshot to ${storedPath}\n`);
 }
 
 function captureGitStatusSnapshot(repoRoot, session, note) {
@@ -445,21 +671,22 @@ function captureGitStatusSnapshot(repoRoot, session, note) {
     return { captured: false };
   }
 
-  const relativeStoredPath = storeArtifactText(repoRoot, session.id, `${output}\n`, "git-status.txt");
+  const storedPath = storeArtifactText(repoRoot, session.id, `${output}\n`, "git-status.txt");
   const changedFiles = output
     .split(/\r?\n/)
     .filter((line) => line.trim() && !line.startsWith("##"))
     .length;
+
   session.events.push(
     createEvent("snapshot", {
       snapshotKind: "git-status",
-      storedPath: relativeStoredPath,
+      storedPath,
       changedFiles,
       note: note || "",
     })
   );
   touchSession(session);
-  return { captured: true, path: relativeStoredPath };
+  return { captured: true, path: storedPath };
 }
 
 async function handleCapture(repoRoot, flags) {
@@ -570,9 +797,31 @@ async function processCaptureLine(repoRoot, sessionId, rawLine) {
 function handleAttach(repoRoot, args, flags) {
   ensureStore(repoRoot);
   const session = resolveSession(repoRoot, args, flags, { allowPositionalId: false });
+  const note = flags.note ? redactText(String(flags.note).trim()) : "";
+
+  if (flags.clip) {
+    const clipText = getClipboardText();
+    if (!clipText.trim()) {
+      fail("Clipboard is empty or unavailable.");
+    }
+
+    const storedPath = storeArtifactText(repoRoot, session.id, redactText(clipText), "clipboard.txt");
+    session.events.push(
+      createEvent("attachment", {
+        originalPath: "clipboard",
+        storedPath,
+        note: note || "Captured from clipboard",
+      })
+    );
+    touchSession(session);
+    writeSession(repoRoot, session);
+    process.stdout.write(`Attached clipboard contents to ${session.id}\n`);
+    return;
+  }
+
   const sourceArg = firstArg(args);
   if (!sourceArg) {
-    fail("Usage: tracepad attach <path-to-file> [--note \"why it matters\"]");
+    fail("Usage: tracepad attach <path-to-file> [--note \"why it matters\"] [--clip]");
   }
 
   const sourcePath = path.isAbsolute(sourceArg) ? sourceArg : path.resolve(repoRoot, sourceArg);
@@ -582,13 +831,11 @@ function handleAttach(repoRoot, args, flags) {
 
   const targetPath = createArtifactPath(repoRoot, session.id, path.basename(sourcePath));
   fs.copyFileSync(sourcePath, targetPath);
-
-  const note = flags.note ? String(flags.note).trim() : "";
-  const relativeStoredPath = path.relative(repoRoot, targetPath).replace(/\\/g, "/");
+  const storedPath = path.relative(repoRoot, targetPath).replace(/\\/g, "/");
   session.events.push(
     createEvent("attachment", {
       originalPath: sourcePath,
-      storedPath: relativeStoredPath,
+      storedPath,
       note,
     })
   );
@@ -600,7 +847,7 @@ function handleAttach(repoRoot, args, flags) {
 function handleClose(repoRoot, args, flags) {
   ensureStore(repoRoot);
   const session = resolveSession(repoRoot, args, flags, { allowPositionalId: false });
-  const summary = flags.summary ? String(flags.summary).trim() : joinArgs(args);
+  const summary = redactText(flags.summary ? String(flags.summary).trim() : joinArgs(args));
 
   if (summary) {
     session.summary = summary;
@@ -630,7 +877,10 @@ function handleExport(repoRoot, args, flags) {
   const session = resolveSession(repoRoot, args, flags, { allowPositionalId: true });
   const template = normalizeTemplate(flags.template);
   const format = normalizeFormat(flags.format, flags.output);
-  const output = renderExport(session, { format, template });
+  const exporter = flags.exporter || (template === "slack" ? "slack" : "");
+  const output = exporter
+    ? renderPluginExport(repoRoot, session, { exporter: String(exporter), format, template, flags })
+    : renderExport(session, { format, template });
   const outputPath = flags.output ? path.resolve(String(flags.output)) : null;
 
   if (!outputPath) {
@@ -646,6 +896,10 @@ function handleExport(repoRoot, args, flags) {
 function renderExport(session, options) {
   const template = normalizeTemplate(options.template);
   const format = normalizeFormat(options.format);
+
+  if (format === "json") {
+    return `${JSON.stringify(session, null, 2)}\n`;
+  }
 
   if (format === "html") {
     return renderHtmlTemplate(session, template);
@@ -774,8 +1028,17 @@ function renderHtmlTemplate(session, template) {
     renderHtmlSection("Summary", [escapeHtml(session.summary || model.summaryFallback)]),
     renderHtmlSection("Findings", model.byKind.finding.map((item) => escapeHtml(item.text)), "No findings captured yet."),
     renderHtmlSection("Hypotheses", model.byKind.hypothesis.map((item) => escapeHtml(item.text)), "No hypotheses captured yet."),
-    renderHtmlSection("Commands", model.commands.map((item) => `<code>${escapeHtml(item.command)}</code>${escapeHtml(renderExitText(item))}${item.note ? ` <span class="muted">- ${escapeHtml(item.note)}</span>` : ""}`), "No commands captured yet."),
-    renderHtmlSection("Snapshots", model.snapshots.map((item) => `${escapeHtml(item.snapshotKind)} - <code>${escapeHtml(item.storedPath)}</code>${item.note ? ` <span class="muted">- ${escapeHtml(item.note)}</span>` : ""}`), "No snapshots captured yet."),
+    renderHtmlSection(
+      "Commands",
+      model.commands.map((item) => `<code>${escapeHtml(item.command)}</code>${escapeHtml(renderExitText(item))}${item.note ? ` <span class="muted">- ${escapeHtml(item.note)}</span>` : ""}`),
+      "No commands captured yet."
+    ),
+    renderHtmlSection(
+      "Snapshots",
+      model.snapshots.map((item) => `${escapeHtml(item.snapshotKind)} - <code>${escapeHtml(item.storedPath)}</code>${item.note ? ` <span class="muted">- ${escapeHtml(item.note)}</span>` : ""}`),
+      "No snapshots captured yet."
+    ),
+    renderHtmlDiffSnapshots(session, model),
     renderHtmlSection("Timeline", model.timelineLines.map((line) => escapeHtml(line)), "No timeline captured yet."),
   ].join("\n");
 
@@ -790,7 +1053,6 @@ function renderHtmlTemplate(session, template) {
       color-scheme: dark;
       --bg: #0b1015;
       --panel: #121b24;
-      --panel-alt: #182432;
       --line: #293648;
       --text: #ebf1f7;
       --muted: #95a5b8;
@@ -798,6 +1060,9 @@ function renderHtmlTemplate(session, template) {
       --green: #62d394;
       --yellow: #ffcf70;
       --rose: #ff8798;
+      --red-bg: rgba(255, 135, 152, 0.12);
+      --green-bg: rgba(98, 211, 148, 0.12);
+      --blue-bg: rgba(86, 214, 255, 0.10);
     }
     * { box-sizing: border-box; }
     body {
@@ -829,8 +1094,7 @@ function renderHtmlTemplate(session, template) {
     .metric { padding: 16px; }
     .metric strong { display: block; font-size: 1.5rem; }
     .metric span { color: var(--muted); font-size: 0.85rem; }
-    .sections { display: grid; gap: 16px; }
-    .section { padding: 18px; }
+    .section { padding: 18px; margin-bottom: 16px; }
     .section h2 { margin: 0 0 12px; font-size: 1rem; }
     ul { margin: 0; padding-left: 20px; }
     li + li { margin-top: 8px; }
@@ -843,6 +1107,47 @@ function renderHtmlTemplate(session, template) {
       font-size: 0.92em;
     }
     .muted { color: var(--muted); }
+    details.diff-file {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      margin-top: 12px;
+      background: rgba(0,0,0,0.18);
+    }
+    details.diff-file summary {
+      cursor: pointer;
+      padding: 10px 12px;
+      color: var(--text);
+      background: rgba(255,255,255,0.04);
+    }
+    .diff-view {
+      margin: 0;
+      overflow-x: auto;
+      font-family: Consolas, Menlo, monospace;
+      font-size: 0.86rem;
+      line-height: 1.45;
+    }
+    .diff-line {
+      display: grid;
+      grid-template-columns: 64px minmax(0, 1fr);
+      min-width: 720px;
+      border-top: 1px solid rgba(255,255,255,0.04);
+    }
+    .diff-line .ln {
+      color: var(--muted);
+      padding: 2px 10px;
+      text-align: right;
+      user-select: none;
+      background: rgba(0,0,0,0.14);
+    }
+    .diff-line .code {
+      white-space: pre;
+      padding: 2px 10px;
+    }
+    .diff-add { background: var(--green-bg); }
+    .diff-del { background: var(--red-bg); }
+    .diff-hunk { background: var(--blue-bg); color: var(--cyan); }
+    .diff-meta { color: var(--muted); }
     @media (max-width: 760px) {
       .metrics { grid-template-columns: repeat(2, minmax(0,1fr)); }
       .hero h1 { font-size: 1.55rem; }
@@ -878,11 +1183,7 @@ function renderHtmlMetrics(model) {
     { value: model.summary.failingCommandCount, label: "Failing Commands" },
   ];
   return `<section class="metrics">
-    ${metrics
-      .map(
-        (item) => `<article class="metric"><strong>${escapeHtml(String(item.value))}</strong><span>${escapeHtml(item.label)}</span></article>`
-      )
-      .join("")}
+    ${metrics.map((item) => `<article class="metric"><strong>${escapeHtml(String(item.value))}</strong><span>${escapeHtml(item.label)}</span></article>`).join("")}
   </section>`;
 }
 
@@ -891,30 +1192,75 @@ function renderHtmlSection(title, lines, emptyText) {
   return `<section class="section"><h2>${escapeHtml(title)}</h2>${content}</section>`;
 }
 
-function renderTuiScreen(session, flashMessage) {
+function renderHtmlDiffSnapshots(session, model) {
+  const diffSnapshots = model.snapshots.filter((item) =>
+    ["git-diff", "git-diff-staged", "git-show"].includes(item.snapshotKind)
+  );
+  if (diffSnapshots.length === 0) {
+    return renderHtmlSection("Diff Viewer", [], "No git diff snapshots captured yet.");
+  }
+
+  const blocks = diffSnapshots.map((item) => {
+    const artifactPath = path.resolve(session.repoRoot || process.cwd(), item.storedPath);
+    const diffText = readTextIfSmall(artifactPath, 300000);
+    const rendered = diffText ? renderInlineDiff(diffText) : `<p class="muted">Diff artifact unavailable: ${escapeHtml(item.storedPath)}</p>`;
+    return `<details class="diff-file" open>
+      <summary>${escapeHtml(item.snapshotKind)} - <code>${escapeHtml(item.storedPath)}</code>${item.note ? ` <span class="muted">- ${escapeHtml(item.note)}</span>` : ""}</summary>
+      ${rendered}
+    </details>`;
+  });
+
+  return `<section class="section"><h2>Diff Viewer</h2>${blocks.join("\n")}</section>`;
+}
+
+function renderInlineDiff(diffText) {
+  const lines = String(diffText).split(/\r?\n/);
+  const rendered = lines.map((line, index) => {
+    const className = classifyDiffLine(line);
+    return `<div class="diff-line ${className}"><span class="ln">${index + 1}</span><span class="code">${escapeHtml(line || " ")}</span></div>`;
+  });
+  return `<pre class="diff-view">${rendered.join("")}</pre>`;
+}
+
+function classifyDiffLine(line) {
+  if (line.startsWith("@@")) {
+    return "diff-hunk";
+  }
+  if (line.startsWith("+") && !line.startsWith("+++")) {
+    return "diff-add";
+  }
+  if (line.startsWith("-") && !line.startsWith("---")) {
+    return "diff-del";
+  }
+  if (line.startsWith("diff --git") || line.startsWith("index ") || line.startsWith("+++") || line.startsWith("---")) {
+    return "diff-meta";
+  }
+  return "";
+}
+
+function renderTuiScreen(session, flashMessage, uiState) {
   const summary = summarizeSession(session);
   const width = Math.max(72, Math.min(process.stdout.columns || 120, 120));
   const innerWidth = width - 4;
-  const timelineLines = session.events.slice(-8).map(renderEventLine);
+  const visibleEvents = session.events.slice(-8);
+  const selectedIndex = uiState && Number.isFinite(uiState.selectedIndex) ? uiState.selectedIndex : 0;
+  const timelineLines = visibleEvents.length > 0
+    ? visibleEvents.map((event, index) => `${index === selectedIndex ? ">" : " "} ${renderEventLine(event, session.createdAt)}`)
+    : ["No events captured yet."];
+  const preview = uiState && uiState.preview ? uiState.preview : { title: "Preview", lines: ["No preview available."], offset: 0, totalLines: 1 };
 
-  const left = [
-    `${ANSI.cyan}${ANSI.bold}Tracepad${ANSI.reset} ${ANSI.gray}debugging flight recorder${ANSI.reset}`,
-    `${ANSI.bold}${session.title}${ANSI.reset}`,
-    `${ANSI.gray}Session ${session.id} | ${session.status} | ${session.branch || "no-branch"}${ANSI.reset}`,
-  ];
-
-  const cards = [
+  const lines = [];
+  lines.push("\x1b[?25l\x1b[2J\x1b[H");
+  lines.push(`${ANSI.cyan}${ANSI.bold}Tracepad${ANSI.reset} ${ANSI.gray}debugging flight recorder${ANSI.reset}`);
+  lines.push(`${ANSI.bold}${session.title}${ANSI.reset}`);
+  lines.push(`${ANSI.gray}Session ${session.id} | ${session.status} | ${session.branch || "no-branch"}${ANSI.reset}`);
+  lines.push("");
+  lines.push([
     metricCard("Notes", summary.noteCount, "cyan"),
     metricCard("Commands", summary.commandCount, "green"),
     metricCard("Snapshots", summary.snapshotCount, "yellow"),
     metricCard("Failures", summary.failingCommandCount, "red"),
-  ];
-
-  const lines = [];
-  lines.push("\x1b[?25l\x1b[2J\x1b[H");
-  lines.push(...left);
-  lines.push("");
-  lines.push(cards.join("   "));
+  ].join("   "));
   lines.push("");
   if (flashMessage) {
     lines.push(`${ANSI.green}${flashMessage}${ANSI.reset}`);
@@ -922,9 +1268,19 @@ function renderTuiScreen(session, flashMessage) {
   }
   lines.push(drawBox("Summary", wrapLines(session.summary || summarizeForDisplay(session), innerWidth), width));
   lines.push("");
-  lines.push(drawBox("Recent Timeline", wrapLines(timelineLines.length > 0 ? timelineLines.join("\n") : "No events captured yet.", innerWidth), width));
+  lines.push(
+    renderSplitBoxes(
+      "Recent Timeline",
+      wrapLines(timelineLines.join("\n"), Math.max(20, Math.floor((width - 7) / 2) - 4)),
+      preview.title,
+      wrapLines(preview.lines.join("\n"), Math.max(20, Math.ceil((width - 7) / 2) - 4)),
+      width
+    )
+  );
   lines.push("");
-  lines.push(`${ANSI.gray}Keys: q quit | r refresh | e export HTML${ANSI.reset}`);
+  lines.push(
+    `${ANSI.gray}Keys: q quit | r refresh | e export HTML | d capture diff | n quick note | [ ] select event | j k scroll preview${ANSI.reset}`
+  );
   return lines.join("\n");
 }
 
@@ -935,19 +1291,46 @@ function metricCard(label, value, colorName) {
 
 function drawBox(title, lines, width) {
   const innerWidth = width - 4;
-  const label = `─ ${title} `;
-  const top = `┌${label}${"─".repeat(Math.max(0, width - 2 - label.length))}┐`;
-  const content = lines.map((line) => `│ ${padRight(line, innerWidth)} │`);
-  const bottom = `└${"─".repeat(width - 2)}┘`;
+  const label = `- ${title} `;
+  const top = `+${label}${"-".repeat(Math.max(0, width - 2 - label.length))}+`;
+  const content = lines.map((line) => `| ${padRight(line, innerWidth)} |`);
+  const bottom = `+${"-".repeat(width - 2)}+`;
   return [top, ...content, bottom].join("\n");
 }
 
+function drawBoxLines(title, lines, width) {
+  const innerWidth = width - 4;
+  const safeLines = lines.length > 0 ? lines : [""];
+  const label = `- ${title} `;
+  const top = `+${label}${"-".repeat(Math.max(0, width - 2 - label.length))}+`;
+  const content = safeLines.map((line) => `| ${padRight(line, innerWidth)} |`);
+  const bottom = `+${"-".repeat(width - 2)}+`;
+  return [top, ...content, bottom];
+}
+
+function renderSplitBoxes(leftTitle, leftLines, rightTitle, rightLines, width) {
+  const leftWidth = Math.max(30, Math.floor((width - 3) / 2));
+  const rightWidth = Math.max(30, width - leftWidth - 3);
+  const leftBox = drawBoxLines(leftTitle, leftLines, leftWidth);
+  const rightBox = drawBoxLines(rightTitle, rightLines, rightWidth);
+  const totalLines = Math.max(leftBox.length, rightBox.length);
+  const output = [];
+
+  for (let index = 0; index < totalLines; index += 1) {
+    const left = leftBox[index] || `| ${" ".repeat(leftWidth - 4)} |`;
+    const right = rightBox[index] || `| ${" ".repeat(rightWidth - 4)} |`;
+    output.push(`${left} ${right}`);
+  }
+
+  return output.join("\n");
+}
+
 function summarizeForDisplay(session) {
-  const findings = session.events.filter((event) => event.type === "note" && (event.kind === "finding" || event.kind === "decision"));
-  if (findings.length === 0) {
+  const items = session.events.filter((event) => event.type === "note" && (event.kind === "finding" || event.kind === "decision"));
+  if (items.length === 0) {
     return "No executive summary yet. Add findings, decisions, or close the session with --summary.";
   }
-  return findings.slice(-3).map((item) => `[${item.kind}] ${item.text}`).join(" | ");
+  return items.slice(-3).map((item) => `[${item.kind}] ${item.text}`).join(" | ");
 }
 
 function wrapLines(text, width) {
@@ -985,25 +1368,79 @@ function stripAnsi(value) {
   return String(value).replace(/\x1B\[[0-9;]*m/g, "");
 }
 
-function renderEventLine(event) {
+function renderEventLine(event, sessionStartAt) {
+  const prefix = sessionStartAt ? `[${formatElapsedTime(sessionStartAt, event.at)}] ` : "";
   if (event.type === "note") {
-    return `${event.at} | ${event.kind} | ${event.text}`;
+    return `${prefix}${event.kind.toUpperCase()} | ${event.text}`;
   }
   if (event.type === "command") {
     const exitText = event.exitCode === null ? "exit ?" : `exit ${event.exitCode}`;
-    const source = event.source === "history" ? "cmd/history" : "cmd";
-    return `${event.at} | ${source} | ${event.command} | ${exitText}`;
+    const source = event.source === "history" ? "CMD/HISTORY" : "CMD";
+    return `${prefix}${source} | ${event.command} | ${exitText}`;
   }
   if (event.type === "attachment") {
-    return `${event.at} | attachment | ${event.storedPath}`;
+    return `${prefix}ATTACHMENT | ${event.storedPath}`;
   }
   if (event.type === "snapshot") {
-    return `${event.at} | snapshot | ${event.snapshotKind} | ${event.storedPath}`;
+    return `${prefix}SNAPSHOT | ${event.snapshotKind} | ${event.storedPath}`;
   }
   if (event.type === "status") {
-    return `${event.at} | status | ${event.state}`;
+    return `${prefix}STATUS | ${event.state}`;
   }
-  return `${event.at} | ${event.type}`;
+  return `${prefix}${event.type.toUpperCase()}`;
+}
+
+function buildTuiPreview(repoRoot, session, event, requestedOffset) {
+  if (!event) {
+    return { title: "Preview", lines: ["No preview available."], offset: 0, totalLines: 1 };
+  }
+
+  let title = `${event.type.toUpperCase()} Preview`;
+  let sourceLines = [];
+
+  if (event.type === "note") {
+    title = `${event.kind.toUpperCase()} Preview`;
+    sourceLines = [event.text];
+  } else if (event.type === "command") {
+    sourceLines = [
+      `Command: ${event.command}`,
+      `Exit: ${event.exitCode === null || event.exitCode === undefined ? "unknown" : event.exitCode}`,
+      `Source: ${event.source || "manual"}`,
+    ];
+    if (event.note) {
+      sourceLines.push("", `Note: ${event.note}`);
+    }
+  } else if (event.type === "attachment" || event.type === "snapshot") {
+    const storedPath = event.storedPath ? path.resolve(repoRoot, event.storedPath) : "";
+    const header = [
+      `Stored: ${event.storedPath || "n/a"}`,
+      event.snapshotKind ? `Kind: ${event.snapshotKind}` : "",
+      event.note ? `Note: ${event.note}` : "",
+      "",
+    ].filter(Boolean);
+
+    if (storedPath && fs.existsSync(storedPath) && fs.statSync(storedPath).isFile()) {
+      const content = fs.readFileSync(storedPath, "utf8").split(/\r?\n/);
+      sourceLines = header.concat(content);
+    } else {
+      sourceLines = header.concat(["Artifact content unavailable."]);
+    }
+  } else if (event.type === "status") {
+    sourceLines = [`State: ${event.state || "unknown"}`];
+    if (event.note) {
+      sourceLines.push("", `Note: ${event.note}`);
+    }
+  } else {
+    sourceLines = [JSON.stringify(event, null, 2)];
+  }
+
+  const offset = Math.max(0, Math.min(Number(requestedOffset) || 0, Math.max(0, sourceLines.length - 1)));
+  return {
+    title,
+    lines: sourceLines.slice(offset, offset + 18),
+    offset,
+    totalLines: sourceLines.length,
+  };
 }
 
 function summarizeSession(session) {
@@ -1055,7 +1492,7 @@ function buildSessionModel(session) {
   const timelineLines = [];
 
   for (const event of session.events) {
-    timelineLines.push(renderEventLine(event));
+    timelineLines.push(`- ${renderEventLine(event, session.createdAt)}`);
     if (event.type === "note") {
       byKind[event.kind].push(event);
     } else if (event.type === "command") {
@@ -1090,17 +1527,48 @@ function buildSessionModel(session) {
     commands,
     attachments,
     snapshots,
-    timelineLines: timelineLines.map((line) => `- ${line}`),
+    timelineLines,
     evidenceLines,
     summaryFallback,
   };
 }
 
-function renderExitText(commandEvent) {
-  if (commandEvent.exitCode === null || commandEvent.exitCode === undefined) {
+function renderReplay(session, format) {
+  const commands = session.events.filter((event) => event.type === "command");
+  if (commands.length === 0) {
+    return format === "markdown" ? "No commands recorded yet." : "# No commands recorded yet.";
+  }
+
+  if (format === "markdown") {
+    const lines = ["## Replay Commands", ""];
+    for (const item of commands) {
+      lines.push(`- \`${item.command}\`${renderExitText(item)}${item.note ? ` - ${item.note}` : ""}`);
+    }
+    lines.push("");
+    lines.push("```bash");
+    for (const item of commands) {
+      lines.push(item.command);
+    }
+    lines.push("```");
+    return lines.join("\n");
+  }
+
+  const lines = ["#!/usr/bin/env bash", "set -euo pipefail", ""];
+  for (const item of commands) {
+    if (item.note) {
+      lines.push(`# ${item.note}`);
+    }
+    lines.push(item.command);
+    lines.push("");
+  }
+  return lines.join("\n").trimEnd();
+}
+
+function renderExitText(event) {
+  if (event.exitCode === null || event.exitCode === undefined) {
     return "";
   }
-  return ` (exit ${commandEvent.exitCode})`;
+  return ` (exit ${event.exitCode})`;
 }
 
 function appendLines(lines, values) {
@@ -1110,35 +1578,28 @@ function appendLines(lines, values) {
 }
 
 function createSession(repoRoot, args, flags) {
-  const title = joinArgs(args) || (flags.title ? String(flags.title).trim() : "");
+  const title = redactText(joinArgs(args) || (flags.title ? String(flags.title).trim() : ""));
   if (!title) {
     fail("Usage: tracepad start \"session title\"");
   }
 
-  const sessionId = createSessionId();
   const now = isoNow();
-  const branch = detectGitBranch(repoRoot);
   const session = {
-    id: sessionId,
+    id: createSessionId(),
     title,
     status: "active",
     createdAt: now,
     updatedAt: now,
     repoRoot,
-    branch,
-    startedBy: process.env.USERNAME || process.env.USER || "unknown",
+    branch: detectGitBranch(repoRoot),
+    startedBy: redactText(process.env.USERNAME || process.env.USER || "unknown"),
     summary: "",
     events: [],
   };
 
-  const initialContext = flags.context ? String(flags.context).trim() : "";
+  const initialContext = flags.context ? redactText(String(flags.context).trim()) : "";
   if (initialContext) {
-    session.events.push(
-      createEvent("note", {
-        text: initialContext,
-        kind: "context",
-      })
-    );
+    session.events.push(createEvent("note", { text: initialContext, kind: "context" }));
   }
 
   return session;
@@ -1155,16 +1616,25 @@ function createEvent(type, data) {
 function resolveSession(repoRoot, args, flags, options) {
   const allowPositionalId = Boolean(options && options.allowPositionalId);
   const requestedId = flags.session ? String(flags.session) : allowPositionalId ? firstArg(args) : "";
-
   if (requestedId) {
     return readSession(repoRoot, requestedId);
   }
 
   const state = getState(repoRoot);
-  if (!state.activeSessionId) {
-    fail("No active session. Start one with: tracepad start \"title\"");
+  if (state.activeSessionId) {
+    return readSession(repoRoot, state.activeSessionId);
   }
-  return readSession(repoRoot, state.activeSessionId);
+
+  const branch = detectGitBranch(repoRoot);
+  if (branch) {
+    const matched = findBranchSession(repoRoot, branch);
+    if (matched) {
+      setActiveSessionId(repoRoot, matched.id);
+      return matched;
+    }
+  }
+
+  fail("No active session. Start one with: tracepad start \"title\"");
 }
 
 function ensureStore(repoRoot) {
@@ -1176,6 +1646,68 @@ function ensureStore(repoRoot) {
   if (!fs.existsSync(statePath)) {
     writeJson(statePath, { version: 1, activeSessionId: null });
   }
+}
+
+function updateGitignore(repoRoot) {
+  const gitignorePath = path.join(repoRoot, ".gitignore");
+  const begin = "# TRACEPAD BEGIN";
+  const end = "# TRACEPAD END";
+  const block = [
+    begin,
+    ".tracepad/state.json",
+    ".tracepad/exports/",
+    ".tracepad/artifacts/",
+    end,
+  ].join("\n");
+
+  let existing = fs.existsSync(gitignorePath) ? fs.readFileSync(gitignorePath, "utf8") : "";
+  existing = existing.replace(new RegExp(`${escapeRegExp(begin)}[\\s\\S]*?${escapeRegExp(end)}\\n?`, "g"), "").trimEnd();
+  const next = existing ? `${existing}\n\n${block}\n` : `${block}\n`;
+  fs.writeFileSync(gitignorePath, next, "utf8");
+}
+
+function renderPluginExport(repoRoot, session, options) {
+  const plugin = loadPlugin(repoRoot, "exporters", options.exporter);
+  if (!plugin || typeof plugin.exportSession !== "function") {
+    fail(`Exporter ${options.exporter} must export exportSession(context).`);
+  }
+
+  const output = plugin.exportSession({
+    repoRoot,
+    session,
+    format: options.format,
+    template: options.template,
+    flags: options.flags,
+    helpers: createPluginHelpers(repoRoot, session),
+  });
+
+  return typeof output === "string" ? output : JSON.stringify(output, null, 2);
+}
+
+function loadPlugin(repoRoot, kind, name) {
+  const safeName = sanitizeFileName(String(name || ""));
+  const candidates = [
+    path.join(repoRoot, ".tracepad", "plugins", kind, `${safeName}.js`),
+    path.join(__dirname, "..", "src", "plugins", kind, `${safeName}.js`),
+  ];
+
+  const pluginPath = candidates.find((candidate) => fs.existsSync(candidate));
+  if (!pluginPath) {
+    fail(`Plugin not found: ${kind}/${safeName}.js`);
+  }
+
+  return require(pluginPath);
+}
+
+function createPluginHelpers(repoRoot, session) {
+  return {
+    createEvent,
+    redactText,
+    renderEventLine: (event) => renderEventLine(event, session.createdAt),
+    storeArtifactText: (text, fileName) => storeArtifactText(repoRoot, session.id, redactText(text), fileName),
+    readArtifactText: (storedPath, maxBytes) => readTextIfSmall(path.resolve(repoRoot, storedPath), maxBytes || 300000),
+    summarizeSession,
+  };
 }
 
 function getState(repoRoot) {
@@ -1207,8 +1739,8 @@ function writeSession(repoRoot, session) {
 
 function listSessions(repoRoot) {
   ensureStore(repoRoot);
-  const entries = fs.readdirSync(sessionsDir(repoRoot), { withFileTypes: true });
-  return entries
+  return fs
+    .readdirSync(sessionsDir(repoRoot), { withFileTypes: true })
     .filter((entry) => entry.isFile() && entry.name.endsWith(".json"))
     .map((entry) => readJson(path.join(sessionsDir(repoRoot), entry.name)));
 }
@@ -1217,16 +1749,122 @@ function touchSession(session) {
   session.updatedAt = isoNow();
 }
 
+function findBranchSession(repoRoot, branch) {
+  const matches = listSessions(repoRoot)
+    .filter((session) => session.branch === branch)
+    .sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+  return matches[0] || null;
+}
+
 function determineShellName(shellFlag) {
   const explicit = String(shellFlag || "").trim().toLowerCase();
   if (explicit) {
     return explicit;
   }
-
   if (process.platform === "win32") {
     return "powershell";
   }
   return process.env.SHELL && process.env.SHELL.includes("zsh") ? "zsh" : "bash";
+}
+
+function renderShellIntegration(shell) {
+  const cliPath = path.resolve(__filename).replace(/\\/g, "/");
+  const nodePath = process.execPath.replace(/\\/g, "/");
+
+  if (shell === "powershell") {
+    return `# TRACEPAD BEGIN
+$env:TRACEPAD_BIN_PATH = "${cliPath}"
+$env:TRACEPAD_NODE_PATH = "${nodePath}"
+$global:TracepadLastCommand = ""
+function global:prompt {
+  $exitCode = if ($global:LASTEXITCODE -is [int]) { $global:LASTEXITCODE } else { 0 }
+  $historyItem = Get-History -Count 1 -ErrorAction SilentlyContinue
+  if ((Test-Path ".tracepad\\state.json") -and $historyItem -and $historyItem.CommandLine -and $historyItem.CommandLine -ne $global:TracepadLastCommand) {
+    $commandText = $historyItem.CommandLine
+    $global:TracepadLastCommand = $commandText
+    if ($commandText -notmatch 'tracepad(\\.js)?\\s') {
+      Start-Process -WindowStyle Hidden -FilePath "$env:TRACEPAD_NODE_PATH" -ArgumentList @("$env:TRACEPAD_BIN_PATH", "cmd", $commandText, "--repo", (Get-Location).Path, "--exit-code", "$exitCode", "--source", "passive-shell") | Out-Null
+    }
+  }
+  "PS $($executionContext.SessionState.Path.CurrentLocation)$('>' * ($nestedPromptLevel + 1)) "
+}
+# TRACEPAD END`;
+  }
+
+  if (shell === "zsh") {
+    return `# TRACEPAD BEGIN
+export TRACEPAD_BIN_PATH="${cliPath}"
+export TRACEPAD_NODE_PATH="${nodePath}"
+__tracepad_last_command=""
+__tracepad_capture_last_command() {
+  local exit_code=$?
+  [[ -d ".tracepad" && -s ".tracepad/state.json" ]] || return "$exit_code"
+  local command_text="$(fc -ln -1 2>/dev/null | sed 's/^ *//')"
+  if [ -n "$command_text" ] && [ "$command_text" != "$__tracepad_last_command" ]; then
+    __tracepad_last_command="$command_text"
+    case "$command_text" in
+      tracepad*|*"tracepad.js"*) ;;
+      *) ("$TRACEPAD_NODE_PATH" "$TRACEPAD_BIN_PATH" cmd "$command_text" --repo "$PWD" --exit-code "$exit_code" --source passive-shell >/dev/null 2>&1 &) ;;
+    esac
+  fi
+  return "$exit_code"
+}
+autoload -Uz add-zsh-hook
+add-zsh-hook precmd __tracepad_capture_last_command
+# TRACEPAD END`;
+  }
+
+  if (shell === "bash") {
+    return `# TRACEPAD BEGIN
+export TRACEPAD_BIN_PATH="${cliPath}"
+export TRACEPAD_NODE_PATH="${nodePath}"
+__tracepad_last_command=""
+__tracepad_capture_last_command() {
+  local exit_code=$?
+  [ -d ".tracepad" ] && [ -s ".tracepad/state.json" ] || return "$exit_code"
+  local command_text="$(history 1 | sed 's/^[ ]*[0-9]\\+[ ]*//')"
+  if [ -n "$command_text" ] && [ "$command_text" != "$__tracepad_last_command" ]; then
+    __tracepad_last_command="$command_text"
+    case "$command_text" in
+      tracepad*|*"tracepad.js"*) ;;
+      *) ("$TRACEPAD_NODE_PATH" "$TRACEPAD_BIN_PATH" cmd "$command_text" --repo "$PWD" --exit-code "$exit_code" --source passive-shell >/dev/null 2>&1 &) ;;
+    esac
+  fi
+  return "$exit_code"
+}
+case "$PROMPT_COMMAND" in
+  *__tracepad_capture_last_command*) ;;
+  *) PROMPT_COMMAND="__tracepad_capture_last_command\${PROMPT_COMMAND:+; $PROMPT_COMMAND}" ;;
+esac
+# TRACEPAD END`;
+  }
+
+  fail(`Unsupported shell for alias setup: ${shell}`);
+}
+
+function resolveShellProfile(shell) {
+  const home = os.homedir();
+  if (shell === "powershell") {
+    const doc = path.join(home, "Documents", "PowerShell");
+    fs.mkdirSync(doc, { recursive: true });
+    return path.join(doc, "Microsoft.PowerShell_profile.ps1");
+  }
+  if (shell === "zsh") {
+    return path.join(home, ".zshrc");
+  }
+  if (shell === "bash") {
+    return path.join(home, ".bashrc");
+  }
+  return null;
+}
+
+function upsertProfileBlock(profilePath, snippet) {
+  const begin = "# TRACEPAD BEGIN";
+  const end = "# TRACEPAD END";
+  fs.mkdirSync(path.dirname(profilePath), { recursive: true });
+  let existing = fs.existsSync(profilePath) ? fs.readFileSync(profilePath, "utf8") : "";
+  existing = existing.replace(new RegExp(`${escapeRegExp(begin)}[\\s\\S]*?${escapeRegExp(end)}\\n?`, "g"), "").trimEnd();
+  fs.writeFileSync(profilePath, `${existing ? `${existing}\n\n` : ""}${snippet}\n`, "utf8");
 }
 
 function resolveHistoryFile(fileFlag, shell) {
@@ -1238,38 +1876,31 @@ function resolveHistoryFile(fileFlag, shell) {
   if (shell === "powershell") {
     const candidates = [
       path.join(home, "AppData", "Roaming", "Microsoft", "Windows", "PowerShell", "PSReadLine", "ConsoleHost_history.txt"),
-      path.join(home, "AppData", "Roaming", "Microsoft", "PowerShell", "PSReadLine", "ConsoleHost_history.txt"),
       path.join(home, ".local", "share", "powershell", "PSReadLine", "ConsoleHost_history.txt"),
     ];
     return candidates.find((candidate) => fs.existsSync(candidate)) || candidates[0];
   }
-
   if (shell === "bash") {
     return path.join(home, ".bash_history");
   }
-
   if (shell === "zsh") {
     return path.join(home, ".zsh_history");
   }
-
   if (shell === "plain") {
     return null;
   }
-
   fail(`Unsupported shell history type: ${shell}`);
 }
 
 function readShellHistory(filePath, shell) {
   const text = fs.readFileSync(filePath, "utf8");
   const lines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
-
   if (shell === "zsh") {
     return lines.map((line) => {
       const separator = line.indexOf(";");
       return separator >= 0 ? line.slice(separator + 1).trim() : line;
     });
   }
-
   return lines;
 }
 
@@ -1288,7 +1919,7 @@ function runGit(repoRoot, args) {
 }
 
 function countChangedFiles(diffText) {
-  const matches = diffText.match(/^diff --git /gm);
+  const matches = String(diffText).match(/^diff --git /gm);
   return matches ? matches.length : 0;
 }
 
@@ -1334,16 +1965,39 @@ function normalizeFormat(value, outputPath) {
     }
     return format;
   }
-
   if (outputPath && String(outputPath).toLowerCase().endsWith(".html")) {
     return "html";
   }
   return "markdown";
 }
 
+function normalizeReplayFormat(value) {
+  const format = String(value || "shell").trim().toLowerCase();
+  if (!REPLAY_FORMATS.has(format)) {
+    fail(`Invalid replay format: ${value}`);
+  }
+  return format;
+}
+
 function ask(rl, prompt) {
   return new Promise((resolve) => {
     rl.question(prompt, resolve);
+  });
+}
+
+function promptTuiTextInput(input, output, prompt) {
+  return new Promise((resolve) => {
+    if (typeof input.setRawMode === "function") {
+      input.setRawMode(false);
+    }
+    const rl = readline.createInterface({ input, output });
+    rl.question(prompt, (answer) => {
+      rl.close();
+      if (typeof input.setRawMode === "function") {
+        input.setRawMode(true);
+      }
+      resolve(answer);
+    });
   });
 }
 
@@ -1354,6 +2008,17 @@ function writeJson(filePath, data) {
 
 function readJson(filePath) {
   return JSON.parse(fs.readFileSync(filePath, "utf8"));
+}
+
+function readTextIfSmall(filePath, maxBytes) {
+  if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
+    return "";
+  }
+  const stat = fs.statSync(filePath);
+  if (stat.size > maxBytes) {
+    return `File omitted from inline view because it is larger than ${maxBytes} bytes: ${filePath}`;
+  }
+  return fs.readFileSync(filePath, "utf8");
 }
 
 function storeDir(repoRoot) {
@@ -1410,6 +2075,16 @@ function isoNow() {
   return new Date().toISOString();
 }
 
+function formatElapsedTime(startIso, endIso) {
+  const start = new Date(startIso).getTime();
+  const end = new Date(endIso).getTime();
+  const totalSeconds = Math.max(0, Math.floor((end - start) / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  return `+${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
 function escapeHtml(value) {
   return String(value)
     .replace(/&/g, "&amp;")
@@ -1417,6 +2092,202 @@ function escapeHtml(value) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+}
+
+function redactText(value) {
+  let text = String(value || "");
+  const patterns = [
+    { regex: /\b(A3T[A-Z0-9]|AKIA|AGPA|AIDA|AROA)[A-Z0-9]{16}\b/g, replacement: "[REDACTED_AWS_KEY]" },
+    { regex: /\bAKIA[0-9A-Z]{16}\b/g, replacement: "[REDACTED_AWS_KEY]" },
+    { regex: /\bASIA[0-9A-Z]{16}\b/g, replacement: "[REDACTED_AWS_KEY]" },
+    { regex: /\bBearer\s+eyJ[A-Za-z0-9-_=]+\.eyJ[A-Za-z0-9-_=]+\.[A-Za-z0-9-_.+=/]+\b/gi, replacement: "Bearer [REDACTED_JWT]" },
+    { regex: /eyJ[a-zA-Z0-9._-]{20,}/g, replacement: "[REDACTED_TOKEN]" },
+    { regex: /-----BEGIN [A-Z ]+PRIVATE KEY-----[\s\S]+?-----END [A-Z ]+PRIVATE KEY-----/g, replacement: "[REDACTED_PRIVATE_KEY]" },
+    { regex: /\bBearer\s+[A-Za-z0-9._-]{16,}\b/gi, replacement: "Bearer [REDACTED_TOKEN]" },
+    { regex: /\b(password|passwd|secret|token|apikey|api_key)\s*=\s*(['"])[^'"]+\2/gi, replacement: "$1=\"[REDACTED_SECRET]\"" },
+    { regex: /\b(password|passwd|secret|token|apikey|api_key)\s*[:=]\s*[^\s'"]+/gi, replacement: "$1=[REDACTED]" },
+  ];
+  for (const pattern of patterns) {
+    text = text.replace(pattern.regex, pattern.replacement);
+  }
+  return text;
+}
+
+function getClipboardText() {
+  try {
+    if (process.platform === "darwin") {
+      return childProcess.execSync("pbpaste", { encoding: "utf8" });
+    }
+    if (process.platform === "win32") {
+      return childProcess.execSync("powershell -command Get-Clipboard", { encoding: "utf8" });
+    }
+    try {
+      return childProcess.execSync("xclip -selection clipboard -o", { encoding: "utf8" });
+    } catch (error) {
+      return childProcess.execSync("xsel --clipboard --output", { encoding: "utf8" });
+    }
+  } catch (error) {
+    return "";
+  }
+}
+
+function extractHighSignalLogSnippet(text, contextLines) {
+  const lines = String(text || "").split(/\r?\n/);
+  const ranges = [];
+  const matcher = /(Exception|Error:|FATAL|Caused by:|HTTP\/\d\.\d"\s5\d\d|status\s5\d\d)/i;
+  let matchCount = 0;
+
+  for (let index = 0; index < lines.length; index += 1) {
+    if (!matcher.test(lines[index])) {
+      continue;
+    }
+    matchCount += 1;
+    ranges.push([Math.max(0, index - contextLines), Math.min(lines.length - 1, index + contextLines)]);
+  }
+
+  if (ranges.length === 0) {
+    return { matchCount: 0, snippet: "" };
+  }
+
+  const merged = [];
+  for (const range of ranges) {
+    if (merged.length === 0 || range[0] > merged[merged.length - 1][1] + 1) {
+      merged.push(range.slice());
+    } else {
+      merged[merged.length - 1][1] = Math.max(merged[merged.length - 1][1], range[1]);
+    }
+  }
+
+  const output = [];
+  for (let index = 0; index < merged.length; index += 1) {
+    const [start, end] = merged[index];
+    if (index > 0) {
+      output.push("...");
+    }
+    for (let lineIndex = start; lineIndex <= end; lineIndex += 1) {
+      output.push(`${String(lineIndex + 1).padStart(5, " ")} | ${lines[lineIndex]}`);
+    }
+  }
+
+  return {
+    matchCount,
+    snippet: output.join("\n"),
+  };
+}
+
+async function extractHighSignalLogSnippetFromFile(filePath, contextLines, maxMatches) {
+  const input = fs.createReadStream(filePath, { encoding: "utf8" });
+  const rl = readline.createInterface({ input, crlfDelay: Infinity });
+  const matcher = /(Exception|Error:|FATAL|CRITICAL|Caused by:|HTTP\/\d\.\d"\s5\d\d|status\s5\d\d|failed?)/i;
+  const before = [];
+  const output = [];
+  let lineNumber = 0;
+  let matchCount = 0;
+  let remainingAfter = 0;
+  let truncated = false;
+
+  const pushLine = (number, line, marker) => {
+    output.push(`${String(number).padStart(5, " ")} | ${marker || " "} ${line}`);
+  };
+
+  for await (const line of rl) {
+    lineNumber += 1;
+    const matched = matcher.test(line);
+
+    if (matched) {
+      matchCount += 1;
+      if (matchCount > maxMatches) {
+        truncated = true;
+        break;
+      }
+
+      if (output.length > 0) {
+        output.push("...");
+      }
+      for (const item of before) {
+        pushLine(item.number, item.line, " ");
+      }
+      pushLine(lineNumber, line, ">");
+      remainingAfter = contextLines;
+      before.length = 0;
+      continue;
+    }
+
+    if (remainingAfter > 0) {
+      pushLine(lineNumber, line, " ");
+      remainingAfter -= 1;
+      continue;
+    }
+
+    before.push({ number: lineNumber, line });
+    if (before.length > contextLines) {
+      before.shift();
+    }
+  }
+
+  if (truncated) {
+    output.push(`... truncated after ${maxMatches} high-signal match(es)`);
+  }
+
+  return {
+    matchCount: Math.min(matchCount, maxMatches),
+    snippet: output.join("\n"),
+  };
+}
+
+function installHooks(repoRoot) {
+  const gitDir = path.join(repoRoot, ".git");
+  if (!fs.existsSync(gitDir) || !fs.statSync(gitDir).isDirectory()) {
+    fail(`No .git directory found under ${repoRoot}.`);
+  }
+
+  const hooksDir = path.join(gitDir, "hooks");
+  fs.mkdirSync(hooksDir, { recursive: true });
+  const nodePath = process.execPath.replace(/\\/g, "/");
+  const cliPath = path.resolve(__filename).replace(/\\/g, "/");
+
+  upsertHook(path.join(hooksDir, "post-commit"), [
+    'ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"',
+    `"${nodePath}" "${cliPath}" diff --repo "$ROOT" --commit HEAD --note "Auto-captured post-commit snapshot" >/dev/null 2>&1 || true`,
+  ]);
+
+  upsertHook(path.join(hooksDir, "post-checkout"), [
+    'ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"',
+    `"${nodePath}" "${cliPath}" branch-sync --repo "$ROOT" --create-if-missing >/dev/null 2>&1 || true`,
+  ]);
+}
+
+function upsertHook(hookPath, lines) {
+  const begin = "# TRACEPAD BEGIN";
+  const end = "# TRACEPAD END";
+  const block = [begin, ...lines, end].join("\n");
+
+  let existing = "";
+  if (fs.existsSync(hookPath)) {
+    existing = fs.readFileSync(hookPath, "utf8");
+    existing = existing.replace(new RegExp(`${escapeRegExp(begin)}[\\s\\S]*?${escapeRegExp(end)}\\n?`, "g"), "").trimEnd();
+  }
+
+  const hasShebang = existing.startsWith("#!/bin/sh");
+  const parts = [];
+  if (!hasShebang) {
+    parts.push("#!/bin/sh");
+  }
+  if (existing) {
+    parts.push(existing);
+  }
+  parts.push(block);
+
+  fs.writeFileSync(hookPath, `${parts.join("\n\n")}\n`, "utf8");
+  try {
+    fs.chmodSync(hookPath, 0o755);
+  } catch (error) {
+    // Ignore chmod errors on platforms that do not care.
+  }
+}
+
+function escapeRegExp(value) {
+  return String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 function fail(message) {
@@ -1435,8 +2306,12 @@ High-signal workflow:
       Start a session, capture git status, import recent shell history, and drop into capture mode.
 
 Commands:
-  init
+  init [--hooks] [--no-gitignore]
       Create the local .tracepad store in the target repo.
+      Add --hooks to install Tracepad git hook automation. Updates .gitignore by default.
+
+  alias setup [--shell bash|zsh|powershell] [--install]
+      Print or install shell integration that passively records terminal commands.
 
   start "title" [--context "why this session exists"]
       Start a new debugging session and make it active.
@@ -1447,6 +2322,9 @@ Commands:
   use <session-id>
       Switch the active session.
 
+  branch-sync [--create-if-missing]
+      Switch the active session to the current git branch, or create one.
+
   list
       List known sessions in the repo.
 
@@ -1454,39 +2332,55 @@ Commands:
       Show a concise session summary. Uses the active session by default.
 
   tui [session-id]
-      Open the visual terminal dashboard. Keys: q quit, r refresh, e export HTML.
+      Open the visual terminal dashboard. Keys: q quit, r refresh, e export HTML, d diff, n note, [ ] select, j k scroll.
 
   note "text" [--kind note|finding|hypothesis|decision|blocker|context]
       Append a structured note to the active session.
 
-  cmd "command text" [--exit-code <n>] [--note "result summary"]
+  cmd "command text" [--exit-code <n>] [--note "result summary"] [--source manual|passive-shell|history]
       Record a command you ran and optional outcome.
 
   history [--shell powershell|bash|zsh] [--file <history-path>] [--limit <n>]
       Import recent shell commands into the active session.
 
-  diff [--staged] [--note "why this diff matters"]
-      Capture the current git diff into the session artifacts.
+  parse <log-file> [--context-lines 2] [--max-matches 200] [--note "why this matters"]
+      Stream high-signal errors from a large log into a compact snippet.
+
+  replay [session-id] [--format shell|markdown] [--output <file>]
+      Reconstruct the recorded command trail for reproduction.
+
+  import <importer-name> [--file <path>] [--note "why this matters"]
+      Run an importer plugin from src/plugins/importers or .tracepad/plugins/importers.
+
+  diff [--staged] [--commit <ref>] [--note "why this diff matters"]
+      Capture the current git diff or a committed snapshot into the session artifacts.
 
   capture
       Start compact interactive capture mode for fast note entry.
 
-  attach <file-path> [--note "why it matters"]
+  attach <file-path> [--note "why it matters"] [--clip]
       Copy an artifact into .tracepad/artifacts and link it to the session.
 
-  export [session-id] [--format markdown|html] [--template handoff|issue|pr|postmortem] [--output <file>]
-      Export the session as a polished brief.
+  export [session-id] [--format markdown|html|json] [--template handoff|issue|pr|postmortem|slack] [--exporter <name>] [--output <file>]
+      Export the session as a polished brief or through an exporter plugin.
 
   close [summary text] [--summary "summary text"]
       Close the active session and optionally store a final summary.
 
 Examples:
+  tracepad init --hooks
+  tracepad alias setup --shell powershell
   tracepad record "Auth refresh bug" --context "User login fails after warm cache"
-  tracepad note "Duplicate refresh under parallel requests" --kind hypothesis
-  tracepad cmd "mvn test -Dtest=AuthFlowTest" --exit-code 1 --note "Still fails"
-  tracepad diff --note "State before fix commit"
-  tracepad tui
+  tracepad cmd "npm test" --source passive-shell --exit-code 1
+  tracepad attach --clip --note "Stack trace copied from console"
+  tracepad parse ./logs/server.log --note "Trimmed fatal error excerpt"
+  tracepad replay --format markdown
+  tracepad import plain-log --file ./logs/server.log --note "Failure excerpt"
+  tracepad diff --commit HEAD --note "Auto-captured committed changes"
   tracepad export --format html --template postmortem --output incident.html
+  tracepad export --format json --output session.json
+  tracepad export --template slack --output session-slack.json
+  tracepad export --exporter slack --output session-slack.json
 `;
 }
 
