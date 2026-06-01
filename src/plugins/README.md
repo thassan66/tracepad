@@ -44,6 +44,16 @@ Run it with:
 tracepad import custom-log --file ./server.log
 ```
 
+Built-in browser importers:
+
+```bash
+tracepad import browser-har --file ./debug.har
+tracepad import browser-capture --file ./browser-capture.json
+```
+
+`browser-har` imports failed, slow, and high-signal network requests from browser devtools HAR exports.
+`browser-capture` imports a generic browser evidence JSON format for tabs, URLs, console errors, network failures, selected text, manual notes, and screenshot data URLs.
+
 ## Exporter Interface
 
 An exporter maps a Tracepad session into another tool's payload or document format.
@@ -88,7 +98,7 @@ Useful helpers:
 Good first plugin PRs:
 
 - Docker container log importer
-- browser HAR importer
+- browser extension exporter for the `browser-capture` JSON shape
 - Jest or Maven test report importer
 - Jira exporter
 - Linear exporter

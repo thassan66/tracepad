@@ -1705,6 +1705,7 @@ function createPluginHelpers(repoRoot, session) {
     redactText,
     renderEventLine: (event) => renderEventLine(event, session.createdAt),
     storeArtifactText: (text, fileName) => storeArtifactText(repoRoot, session.id, redactText(text), fileName),
+    storeArtifactBuffer: (buffer, fileName) => storeArtifactBuffer(repoRoot, session.id, buffer, fileName),
     readArtifactText: (storedPath, maxBytes) => readTextIfSmall(path.resolve(repoRoot, storedPath), maxBytes || 300000),
     summarizeSession,
   };
@@ -2049,6 +2050,12 @@ function storeArtifactText(repoRoot, sessionId, text, fileName) {
   return path.relative(repoRoot, targetPath).replace(/\\/g, "/");
 }
 
+function storeArtifactBuffer(repoRoot, sessionId, buffer, fileName) {
+  const targetPath = createArtifactPath(repoRoot, sessionId, fileName);
+  fs.writeFileSync(targetPath, buffer);
+  return path.relative(repoRoot, targetPath).replace(/\\/g, "/");
+}
+
 function defaultExportPath(repoRoot, sessionId, format) {
   return path.join(exportsDir(repoRoot), `${sessionId}.${format === "html" ? "html" : "md"}`);
 }
@@ -2104,8 +2111,9 @@ function redactText(value) {
     { regex: /eyJ[a-zA-Z0-9._-]{20,}/g, replacement: "[REDACTED_TOKEN]" },
     { regex: /-----BEGIN [A-Z ]+PRIVATE KEY-----[\s\S]+?-----END [A-Z ]+PRIVATE KEY-----/g, replacement: "[REDACTED_PRIVATE_KEY]" },
     { regex: /\bBearer\s+[A-Za-z0-9._-]{16,}\b/gi, replacement: "Bearer [REDACTED_TOKEN]" },
-    { regex: /\b(password|passwd|secret|token|apikey|api_key)\s*=\s*(['"])[^'"]+\2/gi, replacement: "$1=\"[REDACTED_SECRET]\"" },
-    { regex: /\b(password|passwd|secret|token|apikey|api_key)\s*[:=]\s*[^\s'"]+/gi, replacement: "$1=[REDACTED]" },
+    { regex: /\b(password|passwd|secret|token|access_token|refresh_token|id_token|client_secret|apikey|api_key)\s*=\s*(['"])[^'"]+\2/gi, replacement: "$1=\"[REDACTED_SECRET]\"" },
+    { regex: /\b(password|passwd|secret|token|access_token|refresh_token|id_token|client_secret|apikey|api_key)\s*[:=]\s*[^\s'"]+/gi, replacement: "$1=[REDACTED]" },
+    { regex: /([?&](?:password|passwd|secret|token|access_token|refresh_token|id_token|client_secret|apikey|api_key)=)[^&#\s]+/gi, replacement: "$1[REDACTED]" },
   ];
   for (const pattern of patterns) {
     text = text.replace(pattern.regex, pattern.replacement);
@@ -2376,6 +2384,8 @@ Examples:
   tracepad parse ./logs/server.log --note "Trimmed fatal error excerpt"
   tracepad replay --format markdown
   tracepad import plain-log --file ./logs/server.log --note "Failure excerpt"
+  tracepad import browser-har --file ./debug.har --note "Browser network failures"
+  tracepad import browser-capture --file ./browser-capture.json --note "Dashboard/browser investigation"
   tracepad diff --commit HEAD --note "Auto-captured committed changes"
   tracepad export --format html --template postmortem --output incident.html
   tracepad export --format json --output session.json
