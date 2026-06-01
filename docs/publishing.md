@@ -7,8 +7,9 @@ Tracepad is designed to publish as a lightweight npm CLI with no runtime depende
 Run the local validation suite:
 
 ```bash
-npm test
+npm run verify
 npm run pack:dry
+npm run extension:package
 ```
 
 Check the package contents:
@@ -66,3 +67,24 @@ npm publish
 ```
 
 Use `minor` for meaningful new features and `major` for breaking CLI/session-format changes.
+
+## GitHub Actions
+
+The repository includes:
+
+- `.github/workflows/ci.yml`: validates Tracepad, checks package contents, packages the browser extension, and uploads the extension zip for each PR and `master` push.
+- `.github/workflows/release.yml`: builds release artifacts from a tag or manual workflow run.
+
+For npm publishing through GitHub Actions, add an `NPM_TOKEN` repository secret and run the **Release** workflow manually with `publish_npm=true`.
+
+For GitHub release artifacts, push a version tag:
+
+```bash
+git tag v0.5.1
+git push origin v0.5.1
+```
+
+The release workflow attaches:
+
+- npm package tarball
+- browser extension zip

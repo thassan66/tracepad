@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate Tracepad
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Run smoke and extension validation
+        run: npm run verify
+
+      - name: Check npm package contents
+        run: npm run pack:dry
+
+      - name: Package browser extension
+        run: npm run extension:package
+
+      - name: Upload browser extension artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tracepad-browser-extension
+          path: dist/*.zip
+          if-no-files-found: error
