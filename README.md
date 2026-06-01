@@ -153,6 +153,8 @@ node ./bin/tracepad.js import browser-capture --repo /path/to/repo --file ./brow
 
 Browser capture is generic and file-based in Phase 1. It can capture tab titles and URLs, console errors, failed network requests, HTTP 4xx/5xx events, selected text, manual notes, screenshots, and dashboard/app context from tools such as Grafana, OpenShift, ArgoCD, Kubernetes dashboards, CI/CD pages, internal admin portals, and app UIs. See [docs/browser-capture.md](docs/browser-capture.md).
 
+A no-build browser extension MVP is available in [browser-extension](browser-extension/README.md).
+
 Close the session:
 
 ```bash

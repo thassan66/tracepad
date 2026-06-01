@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Tracepad Capture</title>
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <h1>Tracepad</h1>
+          <p id="statusText">Checking status</p>
+        </div>
+        <span id="statusDot" class="dot" aria-hidden="true"></span>
+      </header>
+
+      <section class="metrics" aria-label="Capture totals">
+        <div>
+          <strong id="tabCount">0</strong>
+          <span>tabs</span>
+        </div>
+        <div>
+          <strong id="eventCount">0</strong>
+          <span>events</span>
+        </div>
+      </section>
+
+      <section class="actions" aria-label="Capture actions">
+        <button id="startButton" type="button">Start</button>
+        <button id="selectionButton" type="button">Selection</button>
+        <button id="screenshotButton" type="button">Screenshot</button>
+        <button id="exportButton" type="button">Export</button>
+      </section>
+
+      <label class="note-label" for="noteInput">Note</label>
+      <textarea id="noteInput" rows="3" placeholder="Add what you observed"></textarea>
+      <button id="noteButton" class="wide" type="button">Add Note</button>
+
+      <footer>
+        <button id="clearButton" class="link-button" type="button">Clear capture</button>
+        <span id="messageText" role="status"></span>
+      </footer>
+    </main>
+    <script src="popup.js"></script>
+  </body>
+</html>
