@@ -19,6 +19,20 @@ It is intended for Phase 1 capture across generic browser-based tools:
 3. Choose "Load unpacked".
 4. Select this folder: `browser-extension`.
 
+Validate the extension files from the repo root:
+
+```bash
+npm run extension:validate
+```
+
+Build a store-ready zip from the repo root:
+
+```bash
+npm run extension:package
+```
+
+The zip is written under `dist/`.
+
 ## Workflow
 
 Start a Tracepad CLI session in the repo you are investigating:
@@ -61,3 +75,5 @@ The extension records:
 Recording is explicit and local. The extension stores capture state in browser local storage and exports a JSON file through the browser download flow. It does not upload data to a server.
 
 Review exported JSON and screenshots before sharing. Screenshots and selected text may include private customer, infrastructure, or environment details.
+
+See [STORE_REVIEW.md](STORE_REVIEW.md) for permission justification and manual QA notes.

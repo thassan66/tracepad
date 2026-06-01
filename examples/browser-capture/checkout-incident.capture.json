@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "source": "tracepad-browser-extension",
+  "capturedAt": "2026-06-02T10:00:00.000Z",
+  "startedAt": "2026-06-02T10:00:00.000Z",
+  "stoppedAt": "2026-06-02T10:09:00.000Z",
+  "exportedAt": "2026-06-02T10:10:00.000Z",
+  "tabs": [
+    {
+      "title": "Grafana - Checkout API",
+      "url": "https://grafana.example.local/d/checkout-api",
+      "capturedAt": "2026-06-02T10:01:00.000Z",
+      "selectedText": "p95 latency above threshold"
+    },
+    {
+      "title": "ArgoCD - checkout-api",
+      "url": "https://argocd.example.local/applications/checkout-api",
+      "capturedAt": "2026-06-02T10:02:00.000Z",
+      "selectedText": "Synced to checkout-api:1.9.4"
+    },
+    {
+      "title": "OpenShift Console",
+      "url": "https://openshift.example.local/k8s/ns/prod/pods",
+      "capturedAt": "2026-06-02T10:03:00.000Z",
+      "selectedText": "checkout-api-7df9c CrashLoopBackOff"
+    }
+  ],
+  "events": [
+    {
+      "type": "note",
+      "title": "Grafana - Checkout API",
+      "url": "https://grafana.example.local/d/checkout-api",
+      "message": "Latency spike started immediately after the latest deployment.",
+      "at": "2026-06-02T10:01:00.000Z"
+    },
+    {
+      "type": "selection",
+      "title": "ArgoCD - checkout-api",
+      "url": "https://argocd.example.local/applications/checkout-api",
+      "selectedText": "Synced to checkout-api:1.9.4",
+      "at": "2026-06-02T10:02:00.000Z"
+    },
+    {
+      "type": "selection",
+      "title": "OpenShift Console",
+      "url": "https://openshift.example.local/k8s/ns/prod/pods",
+      "selectedText": "checkout-api-7df9c CrashLoopBackOff",
+      "at": "2026-06-02T10:03:00.000Z"
+    },
+    {
+      "type": "console",
+      "level": "error",
+      "title": "Checkout Admin",
+      "url": "https://admin.example.local/checkout",
+      "message": "Failed to load payment status",
+      "at": "2026-06-02T10:04:00.000Z"
+    },
+    {
+      "type": "network",
+      "method": "GET",
+      "url": "https://api.example.local/payments/status?access_token=sample-secret-token",
+      "status": 503,
+      "durationMs": 842,
+      "message": "HTTP request completed with an error status",
+      "at": "2026-06-02T10:05:00.000Z"
+    }
+  ]
+}
