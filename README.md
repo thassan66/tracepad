@@ -130,6 +130,15 @@ Run a plugin importer:
 node ./bin/tracepad.js import plain-log --repo /path/to/repo --file ./server.log --note "Failure excerpt"
 ```
 
+Import browser debugging evidence:
+
+```bash
+node ./bin/tracepad.js import browser-har --repo /path/to/repo --file ./debug.har --note "Failed API calls from browser devtools"
+node ./bin/tracepad.js import browser-capture --repo /path/to/repo --file ./browser-capture.json --note "Grafana/OpenShift/ArgoCD investigation"
+```
+
+Browser capture is generic and file-based in Phase 1. It can capture tab titles and URLs, console errors, failed network requests, HTTP 4xx/5xx events, selected text, manual notes, screenshots, and dashboard/app context from tools such as Grafana, OpenShift, ArgoCD, Kubernetes dashboards, CI/CD pages, internal admin portals, and app UIs. See [docs/browser-capture.md](docs/browser-capture.md).
+
 Close the session:
 
 ```bash
@@ -191,6 +200,8 @@ Repo-local/private plugins can live under:
 Examples included today:
 
 - `plain-log` importer: extracts high-signal error lines from a text log
+- `browser-har` importer: extracts failed, slow, and high-signal browser network requests from HAR files
+- `browser-capture` importer: imports generic browser timeline exports with tabs, console errors, network failures, selected text, notes, and screenshots
 - `slack` exporter: produces Slack Block Kit JSON
 
 Plugin contracts are documented in `src/plugins/README.md` and `CONTRIBUTING.md`.
