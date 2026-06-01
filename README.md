@@ -155,6 +155,8 @@ Browser capture is generic and file-based in Phase 1. It can capture tab titles 
 
 A no-build browser extension MVP is available in [browser-extension](browser-extension/README.md).
 
+Demo browser capture fixtures are available in [examples/browser-capture](examples/browser-capture/README.md), with a full runbook in [docs/browser-demo.md](docs/browser-demo.md).
+
 Close the session:
 
 ```bash

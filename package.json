@@ -29,7 +29,10 @@
   ],
   "scripts": {
     "test": "node ./scripts/smoke.js",
+    "verify": "node ./scripts/smoke.js && node ./scripts/validate-extension.js",
     "smoke": "node ./scripts/smoke.js",
+    "extension:validate": "node ./scripts/validate-extension.js",
+    "extension:package": "node ./scripts/package-extension.js",
     "pack:dry": "npm pack --dry-run",
     "demo": "node ./bin/tracepad.js --help",
     "capture:help": "node ./bin/tracepad.js capture --help",

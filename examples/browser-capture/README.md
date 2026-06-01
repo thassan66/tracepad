@@ -1,0 +1,23 @@
+# Browser Capture Demo Fixtures
+
+These fixtures demonstrate the Phase 1 browser capture workflow without real customer, provider, or production data.
+
+Run from any repository where you want to create a demo `.tracepad` session:
+
+```bash
+tracepad init
+tracepad start "Checkout latency demo"
+tracepad import browser-capture --file /path/to/tracepad/examples/browser-capture/checkout-incident.capture.json --note "Demo browser session"
+tracepad import browser-har --file /path/to/tracepad/examples/browser-capture/checkout-incident.har --note "Demo browser HAR"
+tracepad export --template postmortem --output ./checkout-demo-postmortem.md
+```
+
+The demo models a common investigation path:
+
+- Grafana shows checkout latency.
+- ArgoCD shows a recent checkout API sync.
+- OpenShift shows a restarted pod.
+- The app UI logs a browser console error.
+- A browser network request returns HTTP 503.
+
+The sample token-like query value is intentionally fake and should be redacted by Tracepad on import.
