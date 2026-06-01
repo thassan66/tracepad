@@ -2,10 +2,35 @@
   "name": "tracepad",
   "version": "0.5.1",
   "description": "Debugging flight recorder CLI for handoffs, PR briefs, incident replay, and reproducible investigation trails.",
+  "author": "Taimoor Hassan",
+  "homepage": "https://github.com/thassan66/tracepad#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/thassan66/tracepad.git"
+  },
+  "bugs": {
+    "url": "https://github.com/thassan66/tracepad/issues"
+  },
+  "engines": {
+    "node": ">=18"
+  },
   "bin": {
     "tracepad": "./bin/tracepad"
   },
+  "files": [
+    "bin/",
+    "docs/*.md",
+    "schema/",
+    "scripts/smoke.js",
+    "src/plugins/",
+    "CONTRIBUTING.md",
+    "LICENSE",
+    "README.md"
+  ],
   "scripts": {
+    "test": "node ./scripts/smoke.js",
+    "smoke": "node ./scripts/smoke.js",
+    "pack:dry": "npm pack --dry-run",
     "demo": "node ./bin/tracepad.js --help",
     "capture:help": "node ./bin/tracepad.js capture --help",
     "record:help": "node ./bin/tracepad.js record --help",
