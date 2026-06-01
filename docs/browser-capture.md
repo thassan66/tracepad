@@ -38,6 +38,12 @@ The importer records:
 
 Use `browser-capture` for exports from a future browser extension, bookmarklet, or internal capture script.
 
+A local no-build browser extension MVP is available in [`browser-extension/`](../browser-extension/README.md). Load it unpacked in Chrome or Edge, capture browser evidence, export JSON, then import it with:
+
+```bash
+tracepad import browser-capture --file ~/Downloads/tracepad-browser-capture.json
+```
+
 Supported fields are intentionally generic:
 
 ```json
