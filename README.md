@@ -31,6 +31,20 @@ Tracepad turns that into structured session data.
 
 ## Quick start
 
+Install from npm after the package is published:
+
+```bash
+npm install -g tracepad
+tracepad --help
+```
+
+Install directly from GitHub before the npm release:
+
+```bash
+npm install -g github:thassan66/tracepad
+tracepad --help
+```
+
 From the `tracepad` folder:
 
 ```bash
