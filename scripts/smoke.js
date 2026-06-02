@@ -34,7 +34,8 @@ function assert(condition, message) {
 try {
   git(["init"]);
   run(["init", "--repo", tempRoot]);
-  run(["start", "Smoke browser incident", "--repo", tempRoot, "--context", "Smoke test session"]);
+  const startOutput = run(["start", "Smoke browser incident", "--repo", tempRoot, "--context", "Smoke test session"]);
+  assert(startOutput.includes("Tracepad Session Started"), "start output did not render the CLI session panel");
   run(["note", "Observed checkout API failure", "--repo", tempRoot, "--kind", "finding"]);
 
   const harPath = path.join(tempRoot, "debug.har");
@@ -105,6 +106,7 @@ try {
   const previewPath = path.join(tempRoot, "browser-preview.html");
   const previewOutput = run(["view-browser", browserCapturePath, "--repo", tempRoot, "--output", previewPath, "--no-open"]);
   assert(previewOutput.includes("Browser capture preview imported"), "view-browser output did not confirm import");
+  assert(previewOutput.includes("Browser Capture Preview"), "view-browser output did not render the CLI preview panel");
   assert(fs.existsSync(previewPath), "view-browser did not create an HTML preview");
   const previewHtml = fs.readFileSync(previewPath, "utf8");
   assert(previewHtml.includes("Browser Evidence Board"), "view-browser preview did not render browser evidence board");
@@ -114,10 +116,12 @@ try {
   run(["export", "--repo", tempRoot, "--template", "handoff", "--output", exportPath]);
 
   const status = run(["status", "--repo", tempRoot]);
+  assert(status.includes("Tracepad Status"), "status output did not render the CLI status panel");
   assert(status.includes("Events:"), "status output did not include event count");
   assert(fs.existsSync(exportPath), "handoff export was not created");
 
   const stopOutput = run(["stop", "--repo", tempRoot, "--summary", "Smoke session complete"]);
+  assert(stopOutput.includes("Tracepad Session Complete"), "stop output did not render the CLI completion panel");
   assert(stopOutput.includes("Stopped session"), "stop output did not confirm the session stopped");
   assert(stopOutput.includes("Visual report:"), "stop output did not include visual report path");
   assert(findFiles(path.join(tempRoot, ".tracepad", "exports")).some((filePath) => filePath.endsWith(".html")), "stop did not create an HTML report");

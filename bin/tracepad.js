@@ -198,9 +198,7 @@ function handleStart(repoRoot, args, flags) {
   const session = createSession(repoRoot, args, flags);
   writeSession(repoRoot, session);
   setActiveSessionId(repoRoot, session.id);
-  process.stdout.write(`Started session ${session.id}: ${session.title}\n`);
-  process.stdout.write("Run your normal terminal commands now. If shell capture is installed, Tracepad records them automatically.\n");
-  process.stdout.write("Stop and export with: tracepad stop\n");
+  process.stdout.write(renderCliStart(session));
 }
 
 async function handleRecord(repoRoot, args, flags) {
@@ -256,61 +254,26 @@ function handleList(repoRoot) {
   const activeId = getState(repoRoot).activeSessionId;
 
   if (sessions.length === 0) {
-    process.stdout.write("No Tracepad sessions yet.\n");
+    process.stdout.write(`${renderCliPanel("Tracepad Sessions", ["No sessions yet.", "Start one with: tracepad start \"Debug title\""])}\n`);
     return;
   }
 
-  const lines = [`${TOOL_NAME} sessions`];
+  const lines = [];
   for (const session of sessions) {
-    const marker = session.id === activeId ? "*" : " ";
     const summary = summarizeSession(session);
-    lines.push(
-      `${marker} ${session.id} | ${session.status} | ${session.updatedAt} | ${session.title} | ${summary.noteCount} notes | ${summary.commandCount} cmds`
-    );
+    const marker = session.id === activeId ? "*" : " ";
+    lines.push(`${marker} ${session.id}  ${session.status}  ${formatDisplayTime(session.updatedAt)}`);
+    lines.push(`  ${session.title}`);
+    lines.push(`  ${summary.noteCount} notes | ${summary.commandCount} cmds | ${summary.snapshotCount + summary.attachmentCount} evidence | ${summary.failingCommandCount} failures`);
+    lines.push("");
   }
-  lines.push("");
-  process.stdout.write(`${lines.join("\n")}\n`);
+  process.stdout.write(`${renderCliPanel(`${TOOL_NAME} Sessions`, lines)}\n`);
 }
 
 function handleStatus(repoRoot, args, flags) {
   ensureStore(repoRoot);
   const session = resolveSession(repoRoot, args, flags, { allowPositionalId: true });
-  const summary = summarizeSession(session);
-  const lines = [];
-
-  lines.push(TOOL_NAME);
-  lines.push(`Session: ${session.id}`);
-  lines.push(`Title: ${session.title}`);
-  lines.push(`Status: ${session.status}`);
-  lines.push(`Created: ${session.createdAt}`);
-  lines.push(`Updated: ${session.updatedAt}`);
-  if (session.branch) {
-    lines.push(`Branch: ${session.branch}`);
-  }
-  lines.push(`Events: ${session.events.length}`);
-  lines.push(`Notes: ${summary.noteCount}`);
-  lines.push(`Commands: ${summary.commandCount}`);
-  lines.push(`Attachments: ${summary.attachmentCount}`);
-  lines.push(`Snapshots: ${summary.snapshotCount}`);
-  lines.push(`Failing cmds: ${summary.failingCommandCount}`);
-  lines.push(`Decisions: ${summary.decisionCount}`);
-  if (session.summary) {
-    lines.push(`Summary: ${session.summary}`);
-  }
-  lines.push("");
-  lines.push("Recent timeline:");
-
-  const recent = session.events.slice(-8);
-  if (recent.length === 0) {
-    lines.push("  - none");
-  } else {
-    for (const event of recent) {
-      lines.push(`  - ${renderEventLine(event, session.createdAt)}`);
-    }
-  }
-
-  lines.push("");
-  process.stdout.write(`${lines.join("\n")}\n`);
+  process.stdout.write(renderCliStatus(session));
 }
 
 async function handleTui(repoRoot, args, flags) {
@@ -670,12 +633,20 @@ async function handleViewBrowser(repoRoot, args, flags) {
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
   fs.writeFileSync(outputPath, `${renderExport(session, { format: "html", template })}\n`, "utf8");
 
-  process.stdout.write(`Browser capture preview imported ${events.length} event(s).\n`);
-  process.stdout.write(`Visual report: ${outputPath}\n`);
+  const lines = [
+    `Browser capture preview imported ${events.length} event(s).`,
+    `Session: ${session.id}`,
+    `Visual report: ${outputPath}`,
+    "",
+    "Next:",
+    "  open the visual report path above",
+    `  tracepad status ${session.id}`,
+  ];
   if (!flags["no-open"]) {
     const opened = openFile(outputPath);
-    process.stdout.write(opened ? "Opened visual report.\n" : "Could not auto-open the report. Open the path above manually.\n");
+    lines.push(opened ? "Opened visual report." : "Could not auto-open the report. Open the path above manually.");
   }
+  process.stdout.write(`${renderCliPanel("Browser Capture Preview", lines)}\n`);
 }
 
 function handleBranchSync(repoRoot, flags) {
@@ -981,10 +952,7 @@ function handleStop(repoRoot, args, flags) {
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
   fs.writeFileSync(outputPath, `${renderExport(session, { format, template })}\n`, "utf8");
 
-  const summaryModel = summarizeSession(session);
-  process.stdout.write(`Stopped session ${session.id}: ${session.title}\n`);
-  process.stdout.write(`Captured ${session.events.length} event(s), ${summaryModel.commandCount} command(s), ${summaryModel.noteCount} note(s), ${summaryModel.snapshotCount} snapshot(s).\n`);
-  process.stdout.write(`Visual report: ${outputPath}\n`);
+  process.stdout.write(renderCliStop(session, outputPath));
 }
 
 function handleExport(repoRoot, args, flags) {
@@ -1776,6 +1744,152 @@ function classifyDiffLine(line) {
     return "diff-meta";
   }
   return "";
+}
+
+function renderCliStart(session) {
+  const lines = [
+    `Started session ${session.id}: ${session.title}`,
+    `Status: ${session.status}`,
+    `Branch: ${session.branch || "unknown"}`,
+    `Created: ${formatDisplayTime(session.createdAt)}`,
+    "",
+    "Run your normal terminal commands now.",
+    "If shell capture is installed, Tracepad records commands automatically.",
+    "",
+    "Useful next commands:",
+    "  tracepad note \"What I observed\" --kind finding",
+    "  tracepad status",
+    "  tracepad stop \"Root cause or final summary\"",
+  ];
+  return `${renderCliPanel("Tracepad Session Started", lines)}\n`;
+}
+
+function renderCliStatus(session) {
+  const summary = summarizeSession(session);
+  const model = buildSessionModel(session);
+  const lines = [
+    `Session: ${session.id}`,
+    `Title: ${session.title}`,
+    `Status: ${session.status}`,
+    `Created: ${formatDisplayTime(session.createdAt)}`,
+    `Updated: ${formatDisplayTime(session.updatedAt)}`,
+  ];
+  if (session.branch) {
+    lines.push(`Branch: ${session.branch}`);
+  }
+  lines.push("");
+  lines.push("Metrics:");
+  lines.push(`  Events: ${session.events.length}`);
+  lines.push(`  Notes: ${summary.noteCount}`);
+  lines.push(`  Commands: ${summary.commandCount}`);
+  lines.push(`  Attachments: ${summary.attachmentCount}`);
+  lines.push(`  Snapshots: ${summary.snapshotCount}`);
+  lines.push(`  Failing cmds: ${summary.failingCommandCount}`);
+  lines.push(`  Decisions: ${summary.decisionCount}`);
+  lines.push("");
+  lines.push("Brief:");
+  lines.push(`  ${session.summary || model.summaryFallback}`);
+  lines.push("");
+  lines.push("Recent timeline:");
+
+  const recent = session.events.slice(-8);
+  if (recent.length === 0) {
+    lines.push("  - none");
+  } else {
+    for (const event of recent) {
+      lines.push(`  - ${renderEventLine(event, session.createdAt)}`);
+    }
+  }
+
+  lines.push("");
+  lines.push("Next:");
+  if (session.status === "active") {
+    lines.push("  tracepad note \"New finding\" --kind finding");
+    lines.push("  tracepad stop \"Final summary\"");
+  } else {
+    lines.push(`  tracepad export ${session.id} --format html --template postmortem --output incident.html`);
+  }
+
+  return `${renderCliPanel(`${TOOL_NAME} Status`, lines)}\n`;
+}
+
+function renderCliStop(session, outputPath) {
+  const summary = summarizeSession(session);
+  const lines = [
+    `Stopped session ${session.id}: ${session.title}`,
+    `Captured ${session.events.length} event(s), ${summary.commandCount} command(s), ${summary.noteCount} note(s), ${summary.snapshotCount} snapshot(s).`,
+    `Visual report: ${outputPath}`,
+    "",
+    "Review:",
+    "  open the visual report path above",
+    `  tracepad status ${session.id}`,
+  ];
+  return `${renderCliPanel("Tracepad Session Complete", lines)}\n`;
+}
+
+function renderCliPanel(title, lines) {
+  const width = Math.max(72, Math.min(process.stdout.columns || 96, 120));
+  const wrapped = [];
+  for (const line of lines) {
+    if (line === "") {
+      wrapped.push("");
+      continue;
+    }
+    wrapped.push(...wrapCliLine(line, width - 4));
+  }
+  return drawBox(title, wrapped, width);
+}
+
+function wrapCliLine(line, width) {
+  const text = String(line);
+  if (text.length <= width) {
+    return [text];
+  }
+
+  const indent = (/^\s*/.exec(text) || [""])[0];
+  const continuationIndent = indent || "  ";
+  const words = text.trim().split(/\s+/).filter(Boolean);
+  const output = [];
+  let current = indent;
+
+  for (const word of words) {
+    const separator = current.trim() ? " " : "";
+    const candidate = `${current}${separator}${word}`;
+    if (candidate.length <= width) {
+      current = candidate;
+      continue;
+    }
+
+    if (current.trim()) {
+      output.push(current);
+      current = continuationIndent;
+    }
+
+    if (`${current}${word}`.length <= width) {
+      current = `${current}${word}`;
+      continue;
+    }
+
+    const available = Math.max(12, width - continuationIndent.length);
+    const chunks = chunkLongText(word, available);
+    for (let index = 0; index < chunks.length - 1; index += 1) {
+      output.push(`${continuationIndent}${chunks[index]}`);
+    }
+    current = `${continuationIndent}${chunks[chunks.length - 1]}`;
+  }
+
+  if (current.trim()) {
+    output.push(current);
+  }
+  return output.length > 0 ? output : [text.slice(0, width)];
+}
+
+function chunkLongText(value, size) {
+  const chunks = [];
+  for (let index = 0; index < value.length; index += size) {
+    chunks.push(value.slice(index, index + size));
+  }
+  return chunks.length > 0 ? chunks : [value];
 }
 
 function renderTuiScreen(session, flashMessage, uiState) {
