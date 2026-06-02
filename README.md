@@ -45,6 +45,15 @@ npm install -g github:thassan66/tracepad
 tracepad --help
 ```
 
+If `tracepad` is not found after install, add npm's global bin folder to your shell path:
+
+```bash
+npm config get prefix
+echo 'export PATH="$(npm config get prefix)/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+tracepad --help
+```
+
 Or run from this repo:
 
 ```bash
