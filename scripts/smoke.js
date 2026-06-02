@@ -127,6 +127,11 @@ try {
   assert(previewOutput.includes("Browser Capture Preview"), "view-browser output did not render the CLI preview panel");
   assert(fs.existsSync(previewPath), "view-browser did not create an HTML preview");
   const previewHtml = fs.readFileSync(previewPath, "utf8");
+  assert(previewHtml.includes("Review Workbench"), "view-browser preview did not render the review workbench");
+  assert(previewHtml.includes("AI Handoff Prompt"), "view-browser preview did not render the AI handoff prompt");
+  assert(previewHtml.includes("Priority Evidence"), "view-browser preview did not render priority evidence");
+  assert(previewHtml.includes("Search timeline"), "view-browser preview did not render timeline search");
+  assert(previewHtml.includes("copyTextById"), "view-browser preview did not include prompt copy controls");
   assert(previewHtml.includes("Browser Evidence Board"), "view-browser preview did not render browser evidence board");
   assert(previewHtml.includes("Suggested Insights"), "view-browser preview did not render suggested insights");
   assert(previewHtml.includes("timeline-controls"), "view-browser preview did not render timeline filters");
