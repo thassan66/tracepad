@@ -50,6 +50,9 @@ async function main() {
     case "record":
       await handleRecord(repoRoot, args, flags);
       return;
+    case "doctor":
+      handleDoctor(repoRoot, flags);
+      return;
     case "use":
       handleUse(repoRoot, args);
       return;
@@ -239,7 +242,40 @@ async function handleRecord(repoRoot, args, flags) {
     process.stdout.write(`Bootstrapped with ${captured.join(", ")}\n`);
   }
 
-  await handleCapture(repoRoot, { session: session.id });
+  if (!flags.command && (flags.capture || flags["manual-capture"] || !process.stdin.isTTY)) {
+    await handleCapture(repoRoot, { session: session.id });
+    return;
+  }
+
+  const shellResult = runRecorderShell(repoRoot, session, flags);
+  if (shellResult.fallback) {
+    await handleCapture(repoRoot, { session: session.id });
+  }
+  const finalSummary = flags.summary
+    ? String(flags.summary).trim()
+    : `Recorder shell exited with code ${shellResult.exitCode}`;
+  const result = finalizeSessionWithReport(repoRoot, readSession(repoRoot, session.id), finalSummary, flags);
+  process.stdout.write(renderCliStop(result.session, result.outputPath, result.redaction, result.captured));
+
+  if (!flags["no-open"]) {
+    const opened = openFile(result.outputPath);
+    process.stdout.write(opened ? "Opened visual report.\n" : "Could not auto-open the report. Open the path above manually.\n");
+  }
+
+  if (flags.command && shellResult.exitCode !== 0) {
+    process.exitCode = shellResult.exitCode;
+  }
+}
+
+function handleDoctor(repoRoot, flags) {
+  const rows = buildDoctorRows(repoRoot, flags);
+  const lines = rows.map((row) => `${row.status.padEnd(4)} ${row.label}: ${row.detail}`);
+  lines.push("");
+  lines.push("Recommended flow:");
+  lines.push("  tracepad init");
+  lines.push("  tracepad record \"Debug title\"");
+  lines.push("  tracepad review");
+  process.stdout.write(`${renderCliPanel("Tracepad Doctor", lines)}\n`);
 }
 
 function handleUse(repoRoot, args) {
@@ -792,6 +828,205 @@ function captureGitDiffSnapshot(repoRoot, session, options) {
   return { captured: true, path: storedPath };
 }
 
+function finalizeSessionWithReport(repoRoot, session, summary, flags) {
+  const captured = [];
+  const finalSummary = redactText(summary || "");
+
+  if (finalSummary) {
+    session.summary = finalSummary;
+  }
+
+  if (!flags["no-final-status"]) {
+    const result = captureGitStatusSnapshot(repoRoot, session, "Final git status before stop");
+    if (result.captured) {
+      captured.push("git status");
+    }
+  }
+
+  if (!flags["no-final-diff"]) {
+    const result = captureGitDiffSnapshot(repoRoot, session, {
+      note: "Final working tree diff before stop",
+    });
+    if (result.error) {
+      captured.push(`git diff failed: ${result.error}`);
+    } else if (result.captured) {
+      captured.push("git diff");
+    }
+  }
+
+  session.status = "closed";
+  session.events.push(
+    createEvent("status", {
+      state: "closed",
+      note: finalSummary || "",
+    })
+  );
+  touchSession(session);
+  writeSession(repoRoot, session);
+
+  const state = getState(repoRoot);
+  if (state.activeSessionId === session.id) {
+    state.activeSessionId = null;
+    writeState(repoRoot, state);
+  }
+
+  const format = normalizeFormat(flags.format || "html", flags.output);
+  const template = normalizeTemplate(flags.template || "handoff");
+  const redaction = normalizeRedactionMode(flags.redaction || (flags["full-redaction"] ? "full" : "normal"));
+  const outputPath = flags.output ? path.resolve(String(flags.output)) : defaultExportPath(repoRoot, session.id, format);
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+  fs.writeFileSync(outputPath, `${renderExport(session, { format, template, redaction })}\n`, "utf8");
+
+  return { session, outputPath, redaction, captured };
+}
+
+function runRecorderShell(repoRoot, session, flags) {
+  const command = flags.command ? String(flags.command).trim() : "";
+  if (command) {
+    const shellName = determineShellName(flags.shell);
+    const shellPath = resolveShellExecutable(shellName);
+    const result = childProcess.spawnSync(shellPath, ["-lc", command], {
+      cwd: repoRoot,
+      stdio: "inherit",
+      env: process.env,
+    });
+    const exitCode = normalizeProcessStatus(result);
+    recordRecorderCommand(repoRoot, session.id, command, exitCode);
+    return { exitCode, shell: shellName };
+  }
+
+  const shellName = determineShellName(flags.shell);
+  if (!["bash", "zsh"].includes(shellName)) {
+    process.stdout.write(`Interactive recorder shell is not available for ${shellName}. Falling back to Tracepad capture mode.\n`);
+    return { exitCode: 0, shell: shellName, fallback: true };
+  }
+
+  const shellPath = resolveShellExecutable(shellName);
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "tracepad-recorder-"));
+  const rcPath = path.join(tempDir, shellName === "zsh" ? ".zshrc" : "tracepad-bashrc");
+  fs.writeFileSync(rcPath, renderRecorderShellRc(shellName, repoRoot, session.id), "utf8");
+
+  process.stdout.write(`${renderCliPanel("Tracepad Recorder Shell", [
+    `Session: ${session.id}`,
+    `Title: ${session.title}`,
+    `Shell: ${shellName}`,
+    "",
+    "Run commands normally.",
+    "Type exit when the debug session is done.",
+  ])}\n`);
+
+  const env = {
+    ...process.env,
+    TRACEPAD_RECORDER: "1",
+    TRACEPAD_RECORDER_SESSION: session.id,
+    TRACEPAD_RECORDER_REPO: repoRoot,
+  };
+  const args = shellName === "zsh"
+    ? ["-i"]
+    : ["--rcfile", rcPath, "-i"];
+
+  if (shellName === "zsh") {
+    env.ZDOTDIR = tempDir;
+  }
+
+  try {
+    const result = childProcess.spawnSync(shellPath, args, {
+      cwd: repoRoot,
+      stdio: "inherit",
+      env,
+    });
+    return { exitCode: normalizeProcessStatus(result), shell: shellName };
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+}
+
+function renderRecorderShellRc(shellName, repoRoot, sessionId) {
+  const repo = shellQuote(repoRoot);
+  const session = shellQuote(sessionId);
+  const cliPath = shellQuote(path.resolve(__filename));
+  const nodePath = shellQuote(process.execPath);
+
+  if (shellName === "zsh") {
+    return `export TRACEPAD_BIN_PATH=${cliPath}
+export TRACEPAD_NODE_PATH=${nodePath}
+export TRACEPAD_RECORDER_REPO=${repo}
+export TRACEPAD_RECORDER_SESSION=${session}
+__tracepad_recorder_command=""
+__tracepad_recorder_preexec() {
+  __tracepad_recorder_command="$1"
+}
+__tracepad_recorder_precmd() {
+  local exit_code=$?
+  local command_text="$__tracepad_recorder_command"
+  __tracepad_recorder_command=""
+  if [ -n "$command_text" ]; then
+    case "$command_text" in
+      tracepad*|*"tracepad.js"*) ;;
+      *) "$TRACEPAD_NODE_PATH" "$TRACEPAD_BIN_PATH" cmd "$command_text" --repo "$TRACEPAD_RECORDER_REPO" --session "$TRACEPAD_RECORDER_SESSION" --exit-code "$exit_code" --source recorder-shell >/dev/null 2>&1 ;;
+    esac
+  fi
+  return "$exit_code"
+}
+autoload -Uz add-zsh-hook
+add-zsh-hook preexec __tracepad_recorder_preexec
+add-zsh-hook precmd __tracepad_recorder_precmd
+PROMPT='tracepad:%1~%# '
+echo 'Tracepad recorder shell active. Run commands normally; type exit when done.'
+`;
+  }
+
+  return `export TRACEPAD_BIN_PATH=${cliPath}
+export TRACEPAD_NODE_PATH=${nodePath}
+export TRACEPAD_RECORDER_REPO=${repo}
+export TRACEPAD_RECORDER_SESSION=${session}
+__tracepad_last_command=""
+__tracepad_record_command() {
+  local exit_code=$?
+  local command_text="$(history 1 | sed 's/^[ ]*[0-9]\\+[ ]*//')"
+  if [ -n "$command_text" ] && [ "$command_text" != "$__tracepad_last_command" ]; then
+    __tracepad_last_command="$command_text"
+    case "$command_text" in
+      tracepad*|*"tracepad.js"*) ;;
+      *) "$TRACEPAD_NODE_PATH" "$TRACEPAD_BIN_PATH" cmd "$command_text" --repo "$TRACEPAD_RECORDER_REPO" --session "$TRACEPAD_RECORDER_SESSION" --exit-code "$exit_code" --source recorder-shell >/dev/null 2>&1 ;;
+    esac
+  fi
+  return "$exit_code"
+}
+set -o history
+PROMPT_COMMAND="__tracepad_record_command"
+PS1='tracepad:\\W\\$ '
+echo 'Tracepad recorder shell active. Run commands normally; type exit when done.'
+`;
+}
+
+function recordRecorderCommand(repoRoot, sessionId, command, exitCode) {
+  const session = readSession(repoRoot, sessionId);
+  session.events.push(
+    createEvent("command", {
+      command: redactText(command),
+      exitCode,
+      note: "",
+      source: "recorder-shell",
+    })
+  );
+  touchSession(session);
+  writeSession(repoRoot, session);
+}
+
+function normalizeProcessStatus(result) {
+  if (!result) {
+    return 1;
+  }
+  if (typeof result.status === "number") {
+    return result.status;
+  }
+  if (result.signal) {
+    return 1;
+  }
+  return result.error ? 1 : 0;
+}
+
 async function handleCapture(repoRoot, flags) {
   ensureStore(repoRoot);
   const session = resolveSession(repoRoot, [], flags, { allowPositionalId: false });
@@ -979,54 +1214,8 @@ function handleStop(repoRoot, args, flags) {
   ensureStore(repoRoot);
   const session = resolveSession(repoRoot, args, flags, { allowPositionalId: false });
   const summary = redactText(flags.summary ? String(flags.summary).trim() : joinArgs(args));
-  const captured = [];
-
-  if (summary) {
-    session.summary = summary;
-  }
-
-  if (!flags["no-final-status"]) {
-    const result = captureGitStatusSnapshot(repoRoot, session, "Final git status before stop");
-    if (result.captured) {
-      captured.push("git status");
-    }
-  }
-
-  if (!flags["no-final-diff"]) {
-    const result = captureGitDiffSnapshot(repoRoot, session, {
-      note: "Final working tree diff before stop",
-    });
-    if (result.error) {
-      captured.push(`git diff failed: ${result.error}`);
-    } else if (result.captured) {
-      captured.push("git diff");
-    }
-  }
-
-  session.status = "closed";
-  session.events.push(
-    createEvent("status", {
-      state: "closed",
-      note: summary || "",
-    })
-  );
-  touchSession(session);
-  writeSession(repoRoot, session);
-
-  const state = getState(repoRoot);
-  if (state.activeSessionId === session.id) {
-    state.activeSessionId = null;
-    writeState(repoRoot, state);
-  }
-
-  const format = normalizeFormat(flags.format || "html", flags.output);
-  const template = normalizeTemplate(flags.template || "handoff");
-  const redaction = normalizeRedactionMode(flags.redaction || (flags["full-redaction"] ? "full" : "normal"));
-  const outputPath = flags.output ? path.resolve(String(flags.output)) : defaultExportPath(repoRoot, session.id, format);
-  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
-  fs.writeFileSync(outputPath, `${renderExport(session, { format, template, redaction })}\n`, "utf8");
-
-  process.stdout.write(renderCliStop(session, outputPath, redaction, captured));
+  const result = finalizeSessionWithReport(repoRoot, session, summary, flags);
+  process.stdout.write(renderCliStop(result.session, result.outputPath, result.redaction, result.captured));
 }
 
 function handleExport(repoRoot, args, flags) {
@@ -3077,6 +3266,54 @@ function findBranchSession(repoRoot, branch) {
   return matches[0] || null;
 }
 
+function buildDoctorRows(repoRoot, flags) {
+  const rows = [];
+  const root = path.resolve(__dirname, "..");
+  const shell = determineShellName(flags.shell);
+  const shellPath = resolveShellExecutable(shell, { optional: true });
+  const git = childProcess.spawnSync("git", ["--version"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  const npmPrefix = getNpmPrefix();
+  const npmBin = npmPrefix ? resolveNpmGlobalBin(npmPrefix) : "";
+  const tracepadOnPath = findExecutableOnPath("tracepad");
+  const profilePath = resolveShellProfile(shell);
+  const profileText = profilePath && fs.existsSync(profilePath) ? fs.readFileSync(profilePath, "utf8") : "";
+  const storeExists = fs.existsSync(storeDir(repoRoot));
+  const stateExists = fs.existsSync(path.join(storeDir(repoRoot), "state.json"));
+  const extensionManifest = path.join(root, "browser-extension", "manifest.json");
+  const extensionZip = fs.existsSync(path.join(root, "dist", "tracepad-browser-extension-0.1.0.zip"));
+
+  rows.push({ status: "OK", label: "Node", detail: process.version });
+  rows.push(git.status === 0
+    ? { status: "OK", label: "Git", detail: git.stdout.trim() }
+    : { status: "FAIL", label: "Git", detail: "git is not available on PATH" });
+  rows.push(shellPath
+    ? { status: "OK", label: "Shell", detail: `${shell} at ${shellPath}` }
+    : { status: "WARN", label: "Shell", detail: `${shell} was not found on PATH` });
+  rows.push(npmPrefix
+    ? { status: "OK", label: "npm prefix", detail: npmPrefix }
+    : { status: "WARN", label: "npm prefix", detail: "npm prefix could not be read" });
+  rows.push(npmBin
+    ? { status: fs.existsSync(npmBin) ? "OK" : "WARN", label: "npm global bin", detail: npmBin }
+    : { status: "WARN", label: "npm global bin", detail: "unknown" });
+  rows.push(tracepadOnPath
+    ? { status: "OK", label: "tracepad on PATH", detail: tracepadOnPath }
+    : { status: "WARN", label: "tracepad on PATH", detail: "not found; global npm bin may need to be added to PATH" });
+  rows.push(profileText.includes("# TRACEPAD BEGIN")
+    ? { status: "OK", label: "Shell integration", detail: `installed in ${profilePath}` }
+    : { status: "WARN", label: "Shell integration", detail: `not installed${profilePath ? ` in ${profilePath}` : ""}; recorder shell still works without it` });
+  rows.push(storeExists && stateExists
+    ? { status: "OK", label: "Repo store", detail: storeDir(repoRoot) }
+    : { status: "WARN", label: "Repo store", detail: "not initialized; run tracepad init" });
+  rows.push(fs.existsSync(extensionManifest)
+    ? { status: "OK", label: "Browser extension", detail: "manifest found" }
+    : { status: "WARN", label: "Browser extension", detail: "manifest missing" });
+  rows.push(extensionZip
+    ? { status: "OK", label: "Extension package", detail: "dist zip exists" }
+    : { status: "WARN", label: "Extension package", detail: "run npm run extension:package when needed" });
+
+  return rows;
+}
+
 function determineShellName(shellFlag) {
   if (shellFlag === true) {
     return process.platform === "win32" ? "powershell" : process.env.SHELL && process.env.SHELL.includes("zsh") ? "zsh" : "bash";
@@ -3089,6 +3326,67 @@ function determineShellName(shellFlag) {
     return "powershell";
   }
   return process.env.SHELL && process.env.SHELL.includes("zsh") ? "zsh" : "bash";
+}
+
+function resolveShellExecutable(shell, options) {
+  const optional = Boolean(options && options.optional);
+  const candidates = shell === "zsh"
+    ? ["zsh"]
+    : shell === "bash"
+      ? ["bash"]
+      : shell === "powershell"
+        ? ["pwsh", "powershell"]
+        : [shell];
+  const found = candidates.map((item) => findExecutableOnPath(item)).find(Boolean);
+  if (found) {
+    return found;
+  }
+  if (optional) {
+    return "";
+  }
+  return candidates[0];
+}
+
+function findExecutableOnPath(command) {
+  const pathValue = process.env.PATH || "";
+  const extensions = process.platform === "win32" ? ["", ".cmd", ".exe", ".bat"] : [""];
+  for (const dir of pathValue.split(path.delimiter)) {
+    if (!dir) {
+      continue;
+    }
+    for (const extension of extensions) {
+      const candidate = path.join(dir, `${command}${extension}`);
+      if (fs.existsSync(candidate)) {
+        try {
+          const stat = fs.statSync(candidate);
+          if (stat.isFile()) {
+            return candidate;
+          }
+        } catch (error) {
+          // Ignore inaccessible PATH entries.
+        }
+      }
+    }
+  }
+  return "";
+}
+
+function getNpmPrefix() {
+  try {
+    return childProcess.execFileSync("npm", ["config", "get", "prefix"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+  } catch (error) {
+    return "";
+  }
+}
+
+function resolveNpmGlobalBin(prefix) {
+  if (!prefix) {
+    return "";
+  }
+  return process.platform === "win32" ? prefix : path.join(prefix, "bin");
 }
 
 function renderShellIntegration(shell) {
@@ -3474,6 +3772,10 @@ function sanitizeFileName(value) {
   return value.replace(/[^a-zA-Z0-9._-]+/g, "-");
 }
 
+function shellQuote(value) {
+  return `'${String(value).replace(/'/g, "'\\''")}'`;
+}
+
 function joinArgs(args) {
   return args.join(" ").trim();
 }
@@ -3750,6 +4052,9 @@ High-signal workflow:
   start "title"
       Start a debugging session. Then run normal terminal commands.
 
+  record "title"
+      Start a debugging session in a temporary recorder shell. Exit the shell to generate the dashboard.
+
   stop [summary]
       Close the session and write a visual HTML report.
 
@@ -3766,7 +4071,11 @@ Commands:
       Start a new debugging session and make it active.
 
   record "title" [--context "..."] [--history-limit 12] [--no-history] [--no-status-snapshot]
-      One-command debugging flight recorder flow.
+      One-command debugging flight recorder flow. Opens a temporary Bash/Zsh recorder shell by default.
+      Use --command "cmd" for a scripted run, or --capture for manual Tracepad capture mode.
+
+  doctor [--shell bash|zsh|powershell]
+      Check Node, git, npm global bin, PATH, shell integration, repo store, and extension packaging.
 
   use <session-id>
       Switch the active session.
@@ -3826,11 +4135,14 @@ Commands:
       Close the active session and optionally store a final summary.
 
 Examples:
+  tracepad doctor
   tracepad init --shell
   tracepad start "Auth refresh bug"
   npm test
   git diff
   tracepad stop "Root cause was duplicate token refresh"
+  tracepad record "Checkout API bug"
+  tracepad record "Scripted check" --command "npm test"
   tracepad alias setup --shell powershell
   tracepad cmd "npm test" --source passive-shell --exit-code 1
   tracepad attach --clip --note "Stack trace copied from console"

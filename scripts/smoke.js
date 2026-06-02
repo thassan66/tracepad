@@ -34,6 +34,12 @@ function assert(condition, message) {
 try {
   git(["init"]);
   run(["init", "--repo", tempRoot]);
+  const doctorOutput = run(["doctor", "--repo", tempRoot]);
+  assert(doctorOutput.includes("Tracepad Doctor"), "doctor output did not render the CLI doctor panel");
+  assert(doctorOutput.includes("Node:"), "doctor output did not include Node status");
+  assert(doctorOutput.includes("Git:"), "doctor output did not include Git status");
+  assert(doctorOutput.includes("Repo store:"), "doctor output did not include repo store status");
+
   const startOutput = run(["start", "Smoke browser incident", "--repo", tempRoot, "--context", "Smoke test session"]);
   assert(startOutput.includes("Tracepad Session Started"), "start output did not render the CLI session panel");
   run(["note", "Observed checkout API failure", "--repo", tempRoot, "--kind", "finding"]);
@@ -177,6 +183,26 @@ try {
   assert(reviewHtml.includes("Review Workbench"), "review dashboard did not include the review workbench");
   assert(reviewHtml.includes("AI Handoff Prompt"), "review dashboard did not include the AI handoff prompt");
   assert(reviewHtml.includes("Search timeline"), "review dashboard did not include timeline search");
+
+  const recordPath = path.join(tempRoot, "record-review.html");
+  const recordOutput = run([
+    "record",
+    "Scripted recorder smoke",
+    "--repo",
+    tempRoot,
+    "--command",
+    `${process.execPath} -e "process.exit(0)"`,
+    "--output",
+    recordPath,
+    "--no-open",
+  ]);
+  assert(recordOutput.includes("Recording session"), "record did not start a recording session");
+  assert(recordOutput.includes("Tracepad Session Complete"), "record did not close with the completion panel");
+  assert(recordOutput.includes("Final evidence:"), "record did not summarize final evidence");
+  assert(fs.existsSync(recordPath), "record did not create a visual dashboard");
+  const recordHtml = fs.readFileSync(recordPath, "utf8");
+  assert(recordHtml.includes("Scripted recorder smoke"), "record dashboard did not include the session title");
+  assert(recordHtml.includes("process.exit(0)"), "record dashboard did not include the recorded command");
 
   const tracepadText = readAllText(path.join(tempRoot, ".tracepad"));
   assert(tracepadText.includes("access_token=[REDACTED]"), "expected redacted access_token in Tracepad store");

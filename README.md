@@ -66,6 +66,12 @@ Initialize Tracepad in any repo:
 tracepad init --shell
 ```
 
+Check the local setup:
+
+```bash
+tracepad doctor
+```
+
 Start a session:
 
 ```bash
@@ -108,6 +114,19 @@ tracepad review
 ```
 
 `start`, `status`, `list`, `stop`, and `view-browser` render compact terminal panels with session metrics, recent timeline entries, next actions, and report paths.
+
+For the easiest flow, use the recorder shell:
+
+```bash
+tracepad record "Checkout API latency"
+# run normal commands in the temporary recorder shell
+npm test
+git diff
+curl http://localhost:3000/health
+exit
+```
+
+When the recorder shell exits, Tracepad records command outcomes, captures final git status/diff, closes the session, writes the dashboard, and opens it. It does not edit your shell profile.
 
 ## Browser Capture
 
@@ -199,11 +218,26 @@ Session flow:
 
 ```bash
 tracepad init --shell
+tracepad doctor
 tracepad start "Auth refresh bug"
 tracepad note "Fails only when cache is warm" --kind finding
 tracepad status
 tracepad stop "Root cause was duplicate refresh under warm cache"
 tracepad review
+```
+
+One-command recorder flow:
+
+```bash
+tracepad record "Auth refresh bug"
+# run commands normally, then exit the recorder shell
+exit
+```
+
+Scripted recorder flow:
+
+```bash
+tracepad record "CI smoke check" --command "npm test"
 ```
 
 Capture command outcomes:
@@ -257,7 +291,8 @@ tracepad export --exporter slack --output ./session-slack.json
 - `init [--hooks] [--shell [bash|zsh|powershell]] [--install-shell] [--no-gitignore]`
 - `alias setup [--shell bash|zsh|powershell] [--install]`
 - `start "title" [--context "..."]`
-- `record "title" [--context "..."] [--history-limit 12] [--no-history] [--no-status-snapshot]`
+- `record "title" [--context "..."] [--history-limit 12] [--no-history] [--no-status-snapshot] [--command "cmd"] [--capture] [--no-open]`
+- `doctor [--shell bash|zsh|powershell]`
 - `use <session-id>`
 - `branch-sync [--create-if-missing]`
 - `list`
