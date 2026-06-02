@@ -14,7 +14,7 @@ Tracepad Browser Capture is a local-first debugging aid. It records browser evid
 
 ## Permission Justification
 
-- `activeTab`: read the active tab title, URL, selected text, and capture visible-tab screenshots after user action.
+- `activeTab`: read the active tab title, URL, selected text, visible page text, and capture visible-tab screenshots after user action.
 - `downloads`: export `tracepad-browser-capture.json`.
 - `scripting`: inject the content script when a page was opened before the extension was installed or before the content script loaded.
 - `storage`: keep explicit capture state locally until export or clear.
@@ -28,12 +28,14 @@ Tracepad Browser Capture is a local-first debugging aid. It records browser evid
 - Select **Start** and verify the popup shows recording state.
 - Open at least two tabs and verify tab count increases after actions.
 - Select text on a page and use **Selection**.
+- Open a page with visible logs/details and use **Page**. Confirm export includes readable page text, headings, and log/detail text.
 - Use **Screenshot** and confirm export includes a screenshot data URL.
 - Trigger a failed request or HTTP 4xx/5xx response and confirm it appears in export.
 - Trigger `console.error("tracepad test")` and confirm it appears in export when page hook injection is allowed.
 - Use **Add Note** and confirm the note appears in export.
 - Use `Alt+Shift+T` to start or stop capture.
 - Use `Alt+Shift+S` to capture selected text.
+- Use `Alt+Shift+D` to capture visible page text and log/details content.
 - Use `Alt+Shift+P` to capture a visible-tab screenshot.
 - Use `Alt+Shift+N` to prompt for and save a manual note.
 - Verify shortcut customization is available under `chrome://extensions/shortcuts`.

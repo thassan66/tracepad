@@ -72,7 +72,10 @@ Default extension shortcuts:
 - `Alt+Shift+T`: start or stop browser capture
 - `Alt+Shift+S`: capture selected text
 - `Alt+Shift+P`: capture visible-tab screenshot
+- `Alt+Shift+D`: capture visible page text and log/details content
 - `Alt+Shift+N`: prompt for a manual note
+
+Automatic browser capture records browser-level signals such as tab context, console errors, failed network requests, and HTTP 4xx/5xx events. When you are looking at page content that matters, such as Grafana panel text, OpenShift pod details, ArgoCD sync messages, CI/CD logs, Kubernetes events, or an app error state, use the extension **Page** action or `Alt+Shift+D`. That snapshots readable visible text, headings, log/code/table regions, and selected text into the Tracepad export.
 
 Supported fields are intentionally generic:
 
@@ -87,6 +90,9 @@ Supported fields are intentionally generic:
       "url": "https://argocd.example.local/applications/checkout-api",
       "capturedAt": "2026-06-02T09:31:00.000Z",
       "selectedText": "Sync failed: configmap checkout-api missing",
+      "pageText": "Application checkout-api\\nSync failed: configmap checkout-api missing",
+      "logText": "Warning SyncFailed configmap checkout-api missing",
+      "headings": ["ArgoCD", "checkout-api"],
       "note": "Deployment was unhealthy after sync",
       "screenshot": {
         "fileName": "argocd-checkout-api.png",
@@ -135,6 +141,7 @@ The importer records:
 - browser tab title and URL
 - console errors
 - failed network requests
+- visible page text and log/detail snapshots
 - selected text
 - manual notes
 - screenshots stored as session artifacts

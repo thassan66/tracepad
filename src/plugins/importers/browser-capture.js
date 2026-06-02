@@ -102,6 +102,9 @@ function normalizeEvents(rawEvents, tabs, helpers) {
     durationMs: event.durationMs === undefined || event.durationMs === null ? null : Number(event.durationMs),
     message: cleanText(event.message || event.error || event.text || "", helpers),
     selectedText: cleanText(event.selectedText || event.selection || "", helpers),
+    pageText: cleanText(event.pageText || "", helpers),
+    logText: cleanText(event.logText || "", helpers),
+    headings: asArray(event.headings).map((item) => cleanText(item, helpers)).filter(Boolean),
     note: cleanText(event.note || "", helpers),
     at: cleanText(event.at || event.capturedAt || "", helpers),
     raw: event,
@@ -251,6 +254,15 @@ function renderEventText(item) {
   }
   if (item.selectedText) {
     parts.push(`selected: ${item.selectedText}`);
+  }
+  if (item.headings && item.headings.length > 0) {
+    parts.push(`headings: ${item.headings.join(" | ")}`);
+  }
+  if (item.logText) {
+    parts.push(`logs/details: ${item.logText}`);
+  }
+  if (item.pageText) {
+    parts.push(`page text: ${item.pageText}`);
   }
   if (item.note) {
     parts.push(item.note);
