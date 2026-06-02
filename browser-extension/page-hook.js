@@ -5,7 +5,6 @@
   window.__TRACEPAD_PAGE_HOOK_ACTIVE__ = true;
 
   patchConsole("error");
-  patchConsole("warn");
 
   function patchConsole(level) {
     const original = console[level];
@@ -13,8 +12,9 @@
       return;
     }
     console[level] = function tracepadConsolePatch(...args) {
-      postConsole(level, args);
-      return original.apply(this, args);
+      const result = original.apply(this, args);
+      queueMicrotask(() => postConsole(level, args));
+      return result;
     };
   }
 

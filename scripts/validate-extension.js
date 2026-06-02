@@ -12,6 +12,11 @@ const requiredFiles = [
   "README.md",
   "STORE_REVIEW.md",
   "content.js",
+  "icons/tracepad-icon.svg",
+  "icons/tracepad-16.png",
+  "icons/tracepad-32.png",
+  "icons/tracepad-48.png",
+  "icons/tracepad-128.png",
   "manifest.json",
   "page-hook.js",
   "popup.css",
@@ -46,6 +51,15 @@ assert(manifest.manifest_version === 3, "Extension must use Manifest V3.");
 assert(manifest.name === "Tracepad Browser Capture", "Unexpected extension name.");
 assert(manifest.background && manifest.background.service_worker === "service_worker.js", "Missing service worker.");
 assert(manifest.action && manifest.action.default_popup === "popup.html", "Missing popup.");
+
+for (const size of ["16", "32", "48", "128"]) {
+  const expectedPath = `icons/tracepad-${size}.png`;
+  assert(manifest.icons && manifest.icons[size] === expectedPath, `Missing manifest icon: ${size}`);
+  assert(
+    manifest.action.default_icon && manifest.action.default_icon[size] === expectedPath,
+    `Missing action icon: ${size}`,
+  );
+}
 
 for (const permission of manifest.permissions || []) {
   assert(allowedPermissions.has(permission), `Unexpected permission: ${permission}`);

@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Tracepad Browser Capture icon">
+  <defs>
+    <linearGradient id="bg" x1="18" y1="10" x2="110" y2="118" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#0f2f3d"/>
+      <stop offset="1" stop-color="#132235"/>
+    </linearGradient>
+    <linearGradient id="trace" x1="33" y1="84" x2="95" y2="39" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#3ddbd9"/>
+      <stop offset="1" stop-color="#7cc7ff"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="112" height="112" rx="24" fill="url(#bg)"/>
+  <rect x="27" y="25" width="74" height="78" rx="14" fill="#f7fbff"/>
+  <rect x="38" y="41" width="52" height="7" rx="3.5" fill="#9fb2c4"/>
+  <rect x="38" y="58" width="31" height="7" rx="3.5" fill="#c2cfda"/>
+  <path d="M34 84l18-19 17 11 25-32" fill="none" stroke="url(#trace)" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="34" cy="84" r="8" fill="#3ddbd9"/>
+  <circle cx="52" cy="65" r="7" fill="#5dd8f0"/>
+  <circle cx="69" cy="76" r="7" fill="#71cfff"/>
+  <circle cx="94" cy="44" r="9" fill="#ffbf47"/>
+  <path d="M91 44h6M94 41v6" stroke="#132235" stroke-width="3" stroke-linecap="round"/>
+</svg>
