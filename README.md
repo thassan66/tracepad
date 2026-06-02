@@ -167,6 +167,7 @@ The current report includes:
 - review workbench with handoff readiness score
 - priority evidence ranking
 - AI handoff prompt you can copy into any provider
+- copy-ready PR, Jira, Slack, AI, and reviewer checklist share cards
 - investigation brief
 - suggested insights generated from captured history
 - metric cards
@@ -192,6 +193,15 @@ tracepad review
 tracepad export --format html --template postmortem --output ./incident.html
 tracepad export --redaction full --format html --template postmortem --output ./share-safe-incident.html
 open ./incident.html
+```
+
+Generate copy-ready handoff text without opening the dashboard:
+
+```bash
+tracepad share --format pr
+tracepad share jira
+tracepad share slack
+tracepad share ai --redaction full --output ./ai-safe-prompt.md
 ```
 
 ## Terminal Dashboard
@@ -279,6 +289,8 @@ Export:
 tracepad export --template handoff --output ./handoff.md
 tracepad export --template pr --output ./pr-brief.md
 tracepad export --template issue --output ./issue.md
+tracepad share --format pr
+tracepad share slack
 tracepad export --format html --template postmortem --output ./incident.html
 tracepad export --redaction full --format html --template postmortem --output ./share-safe-incident.html
 tracepad review
@@ -303,6 +315,7 @@ tracepad export --exporter slack --output ./session-slack.json
 - `history [--shell powershell|bash|zsh] [--file <history-path>] [--limit <n>]`
 - `parse <log-file> [--context-lines 2] [--max-matches 200] [--note "..."]`
 - `review [session-id] [--output <file>] [--redaction normal|full] [--no-open]`
+- `share [session-id|all|pr|jira|slack|ai|checklist] [--format all|pr|jira|slack|ai|checklist] [--redaction normal|full] [--output <file>]`
 - `import <importer-name> [--file <path>] [--note "..."]`
 - `view-browser <browser-capture.json> [--output <file>] [--redaction normal|full] [--no-open]`
 - `replay [session-id] [--format shell|markdown] [--output <file>]`
