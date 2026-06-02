@@ -81,9 +81,17 @@ try {
             url: "https://example.local/debug",
             capturedAt: "2026-06-02T10:00:01.000Z",
             selectedText: "HTTP 503 from checkout status",
+            screenshot: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=",
           },
         ],
         events: [
+          {
+            type: "note",
+            title: "Tracepad Smoke",
+            url: "https://example.local/debug",
+            message: "Contact john@example.com about https://internal.example.local/debug",
+            at: "2026-06-02T10:00:01.500Z",
+          },
           {
             type: "network",
             method: "GET",
@@ -114,6 +122,19 @@ try {
   assert(previewHtml.includes("timeline-controls"), "view-browser preview did not render timeline filters");
   assert(previewHtml.includes("[hidden] { display: none !important; }"), "timeline hidden state can be overridden by card display CSS");
   assert(previewHtml.includes('data-event-kinds="'), "timeline cards did not render filter categories");
+  assert(previewHtml.includes("image-preview-button"), "HTML preview did not render clickable image previews");
+  assert(previewHtml.includes("openImagePreview"), "HTML preview did not include image preview controls");
+
+  const fullPreviewPath = path.join(tempRoot, "browser-preview-full.html");
+  const fullPreviewOutput = run(["view-browser", browserCapturePath, "--repo", tempRoot, "--output", fullPreviewPath, "--no-open", "--redaction", "full"]);
+  assert(fullPreviewOutput.includes("Redaction: full"), "full redaction preview did not report the selected redaction mode");
+  const fullPreviewHtml = fs.readFileSync(fullPreviewPath, "utf8");
+  assert(fullPreviewHtml.includes("Redaction full"), "full redaction report did not show the redaction mode");
+  assert(fullPreviewHtml.includes("[REDACTED_EMAIL]"), "full redaction did not redact email text");
+  assert(fullPreviewHtml.includes("[REDACTED_URL]"), "full redaction did not redact URL text");
+  assert(fullPreviewHtml.includes("Image preview hidden by full redaction mode"), "full redaction did not hide image previews");
+  assert(!fullPreviewHtml.includes("john@example.com"), "full redaction leaked email text");
+  assert(!fullPreviewHtml.includes("internal.example.local"), "full redaction leaked internal URL text");
 
   const exportPath = path.join(tempRoot, "handoff.md");
   run(["export", "--repo", tempRoot, "--template", "handoff", "--output", exportPath]);

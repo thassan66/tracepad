@@ -11,7 +11,9 @@ const TOOL_VERSION = "0.5.1";
 const NOTE_KINDS = new Set(["note", "finding", "hypothesis", "decision", "blocker", "context"]);
 const EXPORT_TEMPLATES = new Set(["handoff", "issue", "pr", "postmortem", "slack"]);
 const EXPORT_FORMATS = new Set(["markdown", "html", "json"]);
+const REDACTION_MODES = new Set(["normal", "full"]);
 const REPLAY_FORMATS = new Set(["shell", "markdown"]);
+const EXPORT_REDACTION_MODE = Symbol("tracepadExportRedactionMode");
 const ANSI = {
   reset: "\x1b[0m",
   bold: "\x1b[1m",
@@ -585,7 +587,7 @@ async function handleViewBrowser(repoRoot, args, flags) {
   ensureStore(repoRoot);
   const sourceArg = firstArg(args) || flags.file;
   if (!sourceArg) {
-    fail("Usage: tracepad view-browser <browser-capture.json> [--output <file>] [--no-open]");
+    fail("Usage: tracepad view-browser <browser-capture.json> [--output <file>] [--redaction normal|full] [--no-open]");
   }
 
   const sourcePath = path.isAbsolute(sourceArg) ? sourceArg : path.resolve(repoRoot, sourceArg);
@@ -629,13 +631,15 @@ async function handleViewBrowser(repoRoot, args, flags) {
   writeSession(repoRoot, session);
 
   const template = normalizeTemplate(flags.template || "postmortem");
+  const redaction = normalizeRedactionMode(flags.redaction || (flags["full-redaction"] ? "full" : "normal"));
   const outputPath = flags.output ? path.resolve(String(flags.output)) : defaultExportPath(repoRoot, session.id, "html");
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
-  fs.writeFileSync(outputPath, `${renderExport(session, { format: "html", template })}\n`, "utf8");
+  fs.writeFileSync(outputPath, `${renderExport(session, { format: "html", template, redaction })}\n`, "utf8");
 
   const lines = [
     `Browser capture preview imported ${events.length} event(s).`,
     `Session: ${session.id}`,
+    `Redaction: ${redaction}`,
     `Visual report: ${outputPath}`,
     "",
     "Next:",
@@ -948,11 +952,12 @@ function handleStop(repoRoot, args, flags) {
 
   const format = normalizeFormat(flags.format || "html", flags.output);
   const template = normalizeTemplate(flags.template || "handoff");
+  const redaction = normalizeRedactionMode(flags.redaction || (flags["full-redaction"] ? "full" : "normal"));
   const outputPath = flags.output ? path.resolve(String(flags.output)) : defaultExportPath(repoRoot, session.id, format);
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
-  fs.writeFileSync(outputPath, `${renderExport(session, { format, template })}\n`, "utf8");
+  fs.writeFileSync(outputPath, `${renderExport(session, { format, template, redaction })}\n`, "utf8");
 
-  process.stdout.write(renderCliStop(session, outputPath));
+  process.stdout.write(renderCliStop(session, outputPath, redaction));
 }
 
 function handleExport(repoRoot, args, flags) {
@@ -960,10 +965,12 @@ function handleExport(repoRoot, args, flags) {
   const session = resolveSession(repoRoot, args, flags, { allowPositionalId: true });
   const template = normalizeTemplate(flags.template);
   const format = normalizeFormat(flags.format, flags.output);
+  const redaction = normalizeRedactionMode(flags.redaction || (flags["full-redaction"] ? "full" : "normal"));
+  const exportSession = prepareSessionForExport(session, redaction);
   const exporter = flags.exporter || (template === "slack" ? "slack" : "");
   const output = exporter
-    ? renderPluginExport(repoRoot, session, { exporter: String(exporter), format, template, flags })
-    : renderExport(session, { format, template });
+    ? renderPluginExport(repoRoot, exportSession, { exporter: String(exporter), format, template, flags })
+    : renderExport(exportSession, { format, template, redaction });
   const outputPath = flags.output ? path.resolve(String(flags.output)) : null;
 
   if (!outputPath) {
@@ -973,22 +980,24 @@ function handleExport(repoRoot, args, flags) {
 
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
   fs.writeFileSync(outputPath, `${output}\n`, "utf8");
-  process.stdout.write(`Exported session ${session.id} to ${outputPath}\n`);
+  process.stdout.write(`Exported session ${session.id} to ${outputPath} (redaction: ${redaction})\n`);
 }
 
 function renderExport(session, options) {
   const template = normalizeTemplate(options.template);
   const format = normalizeFormat(options.format);
+  const redaction = normalizeRedactionMode(options.redaction || getExportRedactionMode(session));
+  const exportSession = getExportRedactionMode(session) === redaction ? session : prepareSessionForExport(session, redaction);
 
   if (format === "json") {
-    return `${JSON.stringify(session, null, 2)}\n`;
+    return `${JSON.stringify(exportSession, null, 2)}\n`;
   }
 
   if (format === "html") {
-    return renderHtmlTemplate(session, template);
+    return renderHtmlTemplate(exportSession, template);
   }
 
-  return renderMarkdownTemplate(session, template);
+  return renderMarkdownTemplate(exportSession, template);
 }
 
 function renderMarkdownTemplate(session, template) {
@@ -1358,6 +1367,62 @@ function renderHtmlTemplate(session, template) {
       max-width: 100%;
       object-fit: contain;
     }
+    .image-preview-button {
+      background: transparent;
+      border: 0;
+      cursor: zoom-in;
+      display: block;
+      margin: 0;
+      padding: 0;
+      text-align: left;
+      width: 100%;
+    }
+    .image-preview-button:hover .artifact-image { border-color: var(--blue); }
+    .image-viewer {
+      align-items: center;
+      background: rgba(17, 24, 39, 0.84);
+      inset: 0;
+      justify-content: center;
+      padding: 18px;
+      position: fixed;
+      z-index: 50;
+    }
+    .image-viewer:not([hidden]) { display: flex; }
+    .image-viewer-panel {
+      background: #ffffff;
+      border-radius: 8px;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      max-height: calc(100vh - 36px);
+      max-width: calc(100vw - 36px);
+      overflow: hidden;
+      width: min(1100px, calc(100vw - 36px));
+    }
+    .image-viewer-toolbar {
+      align-items: center;
+      border-bottom: 1px solid var(--line);
+      display: flex;
+      gap: 8px;
+      justify-content: space-between;
+      padding: 10px;
+    }
+    .image-viewer-toolbar strong {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .image-viewer-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .image-viewer-stage {
+      background: #0f172a;
+      overflow: auto;
+      padding: 16px;
+      text-align: center;
+    }
+    .image-viewer-stage img {
+      max-width: none;
+      transform-origin: top center;
+      vertical-align: top;
+    }
     details.diff-file {
       border: 1px solid var(--line);
       border-radius: 8px;
@@ -1428,7 +1493,24 @@ function renderHtmlTemplate(session, template) {
     </div>
     ${body}
   </main>
+  <div id="imageViewer" class="image-viewer" hidden>
+    <div class="image-viewer-panel" role="dialog" aria-modal="true" aria-label="Screenshot preview">
+      <div class="image-viewer-toolbar">
+        <strong id="imageViewerTitle">Screenshot</strong>
+        <div class="image-viewer-actions">
+          <button type="button" onclick="zoomImage(-0.25)">Zoom out</button>
+          <button type="button" onclick="zoomImage(0.25)">Zoom in</button>
+          <button type="button" onclick="resetImageZoom()">Reset</button>
+          <button type="button" onclick="closeImagePreview()">Close</button>
+        </div>
+      </div>
+      <div class="image-viewer-stage">
+        <img id="imageViewerImage" alt="" />
+      </div>
+    </div>
+  </div>
   <script>
+    var imageZoom = 1;
     function filterTimeline(kind) {
       document.querySelectorAll("[data-filter]").forEach((button) => {
         button.classList.toggle("active", button.dataset.filter === kind);
@@ -1443,12 +1525,44 @@ function renderHtmlTemplate(session, template) {
         navigator.clipboard.writeText(window.location.href);
       }
     }
+    function openImagePreview(src, alt) {
+      var viewer = document.getElementById("imageViewer");
+      var image = document.getElementById("imageViewerImage");
+      var title = document.getElementById("imageViewerTitle");
+      imageZoom = 1;
+      image.src = src;
+      image.alt = alt || "Screenshot";
+      image.style.transform = "scale(1)";
+      title.textContent = alt || "Screenshot";
+      viewer.hidden = false;
+    }
+    function closeImagePreview() {
+      var viewer = document.getElementById("imageViewer");
+      var image = document.getElementById("imageViewerImage");
+      viewer.hidden = true;
+      image.removeAttribute("src");
+    }
+    function zoomImage(delta) {
+      var image = document.getElementById("imageViewerImage");
+      imageZoom = Math.max(0.25, Math.min(4, imageZoom + delta));
+      image.style.transform = "scale(" + imageZoom + ")";
+    }
+    function resetImageZoom() {
+      imageZoom = 1;
+      document.getElementById("imageViewerImage").style.transform = "scale(1)";
+    }
+    document.addEventListener("keydown", function (event) {
+      if (event.key === "Escape") {
+        closeImagePreview();
+      }
+    });
   </script>
 </body>
 </html>`;
 }
 
 function renderHtmlHero(session, label) {
+  const redaction = getExportRedactionMode(session);
   return `<section class="hero">
     <div>
       <p class="eyebrow">${escapeHtml(label)}</p>
@@ -1457,6 +1571,7 @@ function renderHtmlHero(session, label) {
       <div class="meta">
         <span class="pill">Session ${escapeHtml(session.id)}</span>
         <span class="pill">Branch ${escapeHtml(session.branch || "unknown")}</span>
+        <span class="pill">Redaction ${escapeHtml(redaction)}</span>
         <span class="pill">Updated ${escapeHtml(formatDisplayTime(session.updatedAt))}</span>
       </div>
     </div>
@@ -1684,12 +1799,18 @@ function renderHtmlArtifactPreview(session, item) {
   if (!item.storedPath || !/\.(png|jpe?g|webp|gif)$/i.test(item.storedPath)) {
     return "";
   }
+  if (getExportRedactionMode(session) === "full") {
+    return `<p class="empty-state">Image preview hidden by full redaction mode. Use a normal local export when screenshot pixels are needed for debugging.</p>`;
+  }
   const artifactPath = path.resolve(session.repoRoot || process.cwd(), item.storedPath);
   const dataUrl = readImageAsDataUrl(artifactPath, 1200000);
   if (!dataUrl) {
     return "";
   }
-  return `<img class="artifact-image" alt="${escapeHtml(item.note || "Tracepad artifact")}" src="${escapeHtml(dataUrl)}" />`;
+  const label = item.note || "Tracepad artifact";
+  return `<button type="button" class="image-preview-button" data-src="${escapeHtml(dataUrl)}" data-alt="${escapeHtml(label)}" onclick="openImagePreview(this.dataset.src, this.dataset.alt)" title="Open and zoom screenshot">
+    <img class="artifact-image" alt="${escapeHtml(label)}" src="${escapeHtml(dataUrl)}" />
+  </button>`;
 }
 
 function readImageAsDataUrl(filePath, maxBytes) {
@@ -1855,6 +1976,9 @@ function uniqueNonEmpty(values) {
 }
 
 function renderHtmlDiffSnapshots(session, model) {
+  if (getExportRedactionMode(session) === "full") {
+    return renderHtmlSection("Diff Viewer", [], "Diff previews are hidden by full redaction mode. Use a normal local export when code context is needed for debugging.");
+  }
   const diffSnapshots = model.snapshots.filter((item) =>
     ["git-diff", "git-diff-staged", "git-show"].includes(item.snapshotKind)
   );
@@ -1967,11 +2091,12 @@ function renderCliStatus(session) {
   return `${renderCliPanel(`${TOOL_NAME} Status`, lines)}\n`;
 }
 
-function renderCliStop(session, outputPath) {
+function renderCliStop(session, outputPath, redaction) {
   const summary = summarizeSession(session);
   const lines = [
     `Stopped session ${session.id}: ${session.title}`,
     `Captured ${session.events.length} event(s), ${summary.commandCount} command(s), ${summary.noteCount} note(s), ${summary.snapshotCount} snapshot(s).`,
+    `Redaction: ${redaction || "normal"}`,
     `Visual report: ${outputPath}`,
     "",
     "Review:",
@@ -2783,6 +2908,71 @@ function normalizeFormat(value, outputPath) {
   return "markdown";
 }
 
+function normalizeRedactionMode(value) {
+  const mode = String(value || "normal").trim().toLowerCase();
+  if (!REDACTION_MODES.has(mode)) {
+    fail(`Invalid redaction mode: ${value}. Use normal or full.`);
+  }
+  return mode;
+}
+
+function prepareSessionForExport(session, redactionMode) {
+  const mode = normalizeRedactionMode(redactionMode || "normal");
+  if (mode === "normal") {
+    return tagExportSession(session, mode);
+  }
+
+  const copy = redactSessionForFullExport(session);
+  return tagExportSession(copy, mode);
+}
+
+function tagExportSession(session, mode) {
+  try {
+    Object.defineProperty(session, EXPORT_REDACTION_MODE, {
+      value: normalizeRedactionMode(mode),
+      enumerable: false,
+      configurable: true,
+    });
+  } catch (error) {
+    // Non-critical: reports can still render without the marker.
+  }
+  return session;
+}
+
+function getExportRedactionMode(session) {
+  return normalizeRedactionMode(session && session[EXPORT_REDACTION_MODE] ? session[EXPORT_REDACTION_MODE] : "normal");
+}
+
+function redactSessionForFullExport(session) {
+  const copy = redactValueForFullExport(session);
+  copy.repoRoot = "[REDACTED_REPO_ROOT]";
+  copy.branch = copy.branch ? "[REDACTED_BRANCH]" : "";
+  copy.startedBy = "[REDACTED_USER]";
+  return copy;
+}
+
+function redactValueForFullExport(value) {
+  if (typeof value === "string") {
+    return redactFullText(value);
+  }
+  if (Array.isArray(value)) {
+    return value.map((item) => redactValueForFullExport(item));
+  }
+  if (value && typeof value === "object") {
+    const output = {};
+    for (const [key, item] of Object.entries(value)) {
+      const lowerKey = key.toLowerCase();
+      if (typeof item === "string" && (lowerKey.includes("path") || lowerKey === "storedpath" || lowerKey === "originalpath")) {
+        output[key] = item && /\.(png|jpe?g|webp|gif)$/i.test(item) ? "[REDACTED_IMAGE].png" : item ? "[REDACTED_PATH]" : "";
+      } else {
+        output[key] = redactValueForFullExport(item);
+      }
+    }
+    return output;
+  }
+  return value;
+}
+
 function normalizeReplayFormat(value) {
   const format = String(value || "shell").trim().toLowerCase();
   if (!REPLAY_FORMATS.has(format)) {
@@ -2960,6 +3150,22 @@ function redactText(value) {
     text = text.replace(pattern.regex, pattern.replacement);
   }
   return text;
+}
+
+function redactFullText(value) {
+  let text = redactText(value);
+  const patterns = [
+    { regex: /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, replacement: "[REDACTED_EMAIL]" },
+    { regex: /\bhttps?:\/\/[^\s<>"')]+/gi, replacement: "[REDACTED_URL]" },
+    { regex: /\b(?:\d{1,3}\.){3}\d{1,3}\b/g, replacement: "[REDACTED_IP]" },
+    { regex: /(?:^|\s)(\/Users\/|\/home\/|\/var\/folders\/)[^\s<>"')]+/g, replacement: " [REDACTED_PATH]" },
+    { regex: /(?:^|\s)[A-Za-z]:\\[^\s<>"')]+/g, replacement: " [REDACTED_PATH]" },
+    { regex: /\+\d[\d .()/-]{7,}\d/g, replacement: "[REDACTED_PHONE]" },
+  ];
+  for (const pattern of patterns) {
+    text = text.replace(pattern.regex, pattern.replacement);
+  }
+  return text.trim();
 }
 
 function getClipboardText() {
@@ -3208,7 +3414,7 @@ Commands:
   import <importer-name> [--file <path>] [--note "why this matters"]
       Run an importer plugin from src/plugins/importers or .tracepad/plugins/importers.
 
-  view-browser <browser-capture.json> [--output <file>] [--no-open]
+  view-browser <browser-capture.json> [--output <file>] [--redaction normal|full] [--no-open]
       Import a browser capture JSON file, generate an HTML report, and open it.
 
   diff [--staged] [--commit <ref>] [--note "why this diff matters"]
@@ -3220,10 +3426,10 @@ Commands:
   attach <file-path> [--note "why it matters"] [--clip]
       Copy an artifact into .tracepad/artifacts and link it to the session.
 
-  export [session-id] [--format markdown|html|json] [--template handoff|issue|pr|postmortem|slack] [--exporter <name>] [--output <file>]
+  export [session-id] [--format markdown|html|json] [--template handoff|issue|pr|postmortem|slack] [--redaction normal|full] [--exporter <name>] [--output <file>]
       Export the session as a polished brief or through an exporter plugin.
 
-  stop [summary text] [--summary "summary text"] [--format html|markdown|json] [--output <file>]
+  stop [summary text] [--summary "summary text"] [--format html|markdown|json] [--redaction normal|full] [--output <file>]
       Stop the active session and write a report. Defaults to HTML.
 
   close [summary text] [--summary "summary text"]
@@ -3244,6 +3450,7 @@ Examples:
   tracepad import browser-har --file ./debug.har --note "Browser network failures"
   tracepad import browser-capture --file ./browser-capture.json --note "Dashboard/browser investigation"
   tracepad view-browser ./browser-capture.json
+  tracepad export --redaction full --format html --output share-safe-incident.html
   tracepad diff --commit HEAD --note "Auto-captured committed changes"
   tracepad export --format html --template postmortem --output incident.html
   tracepad export --format json --output session.json
