@@ -164,11 +164,12 @@ Import browser debugging evidence:
 ```bash
 node ./bin/tracepad.js import browser-har --repo /path/to/repo --file ./debug.har --note "Failed API calls from browser devtools"
 node ./bin/tracepad.js import browser-capture --repo /path/to/repo --file ./browser-capture.json --note "Grafana/OpenShift/ArgoCD investigation"
+node ./bin/tracepad.js export --repo /path/to/repo --format html --template postmortem --output ./browser-debug.html
 ```
 
 Browser capture is generic and file-based in Phase 1. It can capture tab titles and URLs, console errors, failed network requests, HTTP 4xx/5xx events, selected text, manual notes, screenshots, and dashboard/app context from tools such as Grafana, OpenShift, ArgoCD, Kubernetes dashboards, CI/CD pages, internal admin portals, and app UIs. See [docs/browser-capture.md](docs/browser-capture.md).
 
-A no-build browser extension MVP is available in [browser-extension](browser-extension/README.md).
+A no-build browser extension MVP is available in [browser-extension](browser-extension/README.md). It supports keyboard shortcuts for start/stop, selected text capture, screenshot capture, and manual note capture.
 
 Demo browser capture fixtures are available in [examples/browser-capture](examples/browser-capture/README.md), with a full runbook in [docs/browser-demo.md](docs/browser-demo.md).
 

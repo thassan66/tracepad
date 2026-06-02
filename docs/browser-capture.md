@@ -7,13 +7,14 @@ The Phase 1 workflow is file-based:
 1. Start a Tracepad session.
 2. Export browser evidence as a HAR file or Tracepad browser capture JSON.
 3. Import the file into the active session.
-4. Export a handoff, issue, PR brief, or postmortem.
+4. Export a visual handoff, issue, PR brief, or postmortem.
 
 ```bash
 tracepad start "Checkout latency spike"
 tracepad import browser-har --file ./checkout-debug.har --note "Grafana and app API failures"
 tracepad import browser-capture --file ./browser-capture.json --note "OpenShift and ArgoCD investigation"
-tracepad export --template postmortem --output ./debug-postmortem.md
+tracepad export --format html --template postmortem --output ./debug-postmortem.html
+open ./debug-postmortem.html
 ```
 
 ## HAR Import
@@ -42,7 +43,18 @@ A local no-build browser extension MVP is available in [`browser-extension/`](..
 
 ```bash
 tracepad import browser-capture --file ~/Downloads/tracepad-browser-capture.json
+tracepad export --format html --template postmortem --output ./browser-debug.html
+open ./browser-debug.html
 ```
+
+The exported JSON is not the final viewing experience. Treat it as an evidence file that Tracepad imports into a session. The visual output is the generated HTML or Markdown report.
+
+Default extension shortcuts:
+
+- `Alt+Shift+T`: start or stop browser capture
+- `Alt+Shift+S`: capture selected text
+- `Alt+Shift+P`: capture visible-tab screenshot
+- `Alt+Shift+N`: prompt for a manual note
 
 Supported fields are intentionally generic:
 
