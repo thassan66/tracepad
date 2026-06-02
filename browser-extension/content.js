@@ -60,8 +60,8 @@
 
   function capturePage() {
     const selectedText = getSelectedText();
-    const pageText = collectVisiblePageText();
     const logText = collectHighSignalText();
+    const pageText = removeDuplicateText(collectVisiblePageText(), [logText, selectedText]);
     const headings = collectHeadings();
     const summaryParts = [];
     if (headings.length > 0) {
@@ -120,8 +120,8 @@
           continue;
         }
         const text = normalizeText(element.innerText || element.textContent || "");
-        if (text && !chunks.includes(text)) {
-          chunks.push(text);
+        if (text) {
+          addDedupedChunk(chunks, text);
         }
         if (chunks.join("\n\n").length > 12000) {
           return limitText(chunks.join("\n\n"), 12000);
@@ -129,7 +129,7 @@
       }
     }
     if (chunks.length === 0 && document.body && isVisible(document.body)) {
-      chunks.push(normalizeText(document.body.innerText || document.body.textContent || ""));
+      addDedupedChunk(chunks, normalizeText(document.body.innerText || document.body.textContent || ""));
     }
     return limitText(chunks.join("\n\n"), 12000);
   }
@@ -162,8 +162,8 @@
           continue;
         }
         const text = normalizeText(element.innerText || element.textContent || "");
-        if (text && !chunks.includes(text)) {
-          chunks.push(text);
+        if (text) {
+          addDedupedChunk(chunks, text);
         }
         if (chunks.join("\n\n").length > 8000) {
           return limitText(chunks.join("\n\n"), 8000);
@@ -192,6 +192,60 @@
 
   function normalizeText(value) {
     return String(value || "").replace(/\s+\n/g, "\n").replace(/\n\s+/g, "\n").replace(/[ \t]{2,}/g, " ").trim();
+  }
+
+  function addDedupedChunk(chunks, text) {
+    const normalized = normalizeText(text);
+    if (!normalized) {
+      return;
+    }
+    const fingerprint = fingerprintText(normalized);
+    for (let index = 0; index < chunks.length; index += 1) {
+      const existing = chunks[index];
+      const existingFingerprint = fingerprintText(existing);
+      if (existingFingerprint === fingerprint || existingFingerprint.includes(fingerprint)) {
+        return;
+      }
+      if (fingerprint.includes(existingFingerprint)) {
+        chunks.splice(index, 1);
+        index -= 1;
+      }
+    }
+    chunks.push(normalized);
+  }
+
+  function removeDuplicateText(text, excludedTexts) {
+    let output = normalizeText(text);
+    for (const excluded of excludedTexts) {
+      const duplicate = normalizeText(excluded);
+      if (!duplicate) {
+        continue;
+      }
+      output = output.replace(duplicate, "");
+    }
+    return normalizeText(dedupeLines(output));
+  }
+
+  function dedupeLines(text) {
+    const seen = new Set();
+    const lines = [];
+    for (const line of String(text || "").split(/\r?\n/)) {
+      const normalized = normalizeText(line);
+      if (!normalized) {
+        continue;
+      }
+      const fingerprint = fingerprintText(normalized);
+      if (seen.has(fingerprint)) {
+        continue;
+      }
+      seen.add(fingerprint);
+      lines.push(normalized);
+    }
+    return lines.join("\n");
+  }
+
+  function fingerprintText(value) {
+    return String(value || "").toLowerCase().replace(/\s+/g, " ").trim();
   }
 
   function limitText(value, maxLength) {
