@@ -42,6 +42,18 @@ Use `browser-capture` for exports from a future browser extension, bookmarklet, 
 A local no-build browser extension MVP is available in [`browser-extension/`](../browser-extension/README.md). Load it unpacked in Chrome or Edge, capture browser evidence, export JSON, then import it with:
 
 ```bash
+tracepad view-browser ~/Downloads/tracepad-browser-capture.json
+```
+
+That command creates a Tracepad preview session, imports the JSON, generates an HTML report, and opens it. To write to a specific file without opening it:
+
+```bash
+tracepad view-browser ~/Downloads/tracepad-browser-capture.json --output ./browser-debug.html --no-open
+```
+
+For an existing Tracepad session, use the lower-level import/export flow:
+
+```bash
 tracepad import browser-capture --file ~/Downloads/tracepad-browser-capture.json
 tracepad export --format html --template postmortem --output ./browser-debug.html
 open ./browser-debug.html

@@ -74,6 +74,12 @@ edge://extensions/shortcuts
 Import the downloaded JSON into Tracepad:
 
 ```bash
+tracepad view-browser ~/Downloads/tracepad-browser-capture.json
+```
+
+For an existing Tracepad session:
+
+```bash
 tracepad import browser-capture --file ~/Downloads/tracepad-browser-capture.json
 tracepad export --template postmortem --output ./debug-postmortem.md
 ```

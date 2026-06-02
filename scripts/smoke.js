@@ -66,7 +66,46 @@ try {
     "utf8"
   );
 
+  const browserCapturePath = path.join(tempRoot, "browser-capture.json");
+  fs.writeFileSync(
+    browserCapturePath,
+    JSON.stringify(
+      {
+        version: 1,
+        source: "tracepad-browser-extension",
+        capturedAt: "2026-06-02T10:00:00.000Z",
+        tabs: [
+          {
+            title: "Tracepad Smoke",
+            url: "https://example.local/debug",
+            capturedAt: "2026-06-02T10:00:01.000Z",
+            selectedText: "HTTP 503 from checkout status",
+          },
+        ],
+        events: [
+          {
+            type: "network",
+            method: "GET",
+            url: "https://api.example.local/status?access_token=secret-token",
+            status: 503,
+            durationMs: 842,
+            message: "HTTP request completed with an error status",
+            at: "2026-06-02T10:00:02.000Z",
+          },
+        ],
+      },
+      null,
+      2
+    ),
+    "utf8"
+  );
+
   run(["import", "browser-har", "--repo", tempRoot, "--file", harPath, "--note", "Smoke HAR"]);
+
+  const previewPath = path.join(tempRoot, "browser-preview.html");
+  const previewOutput = run(["view-browser", browserCapturePath, "--repo", tempRoot, "--output", previewPath, "--no-open"]);
+  assert(previewOutput.includes("Browser capture preview imported"), "view-browser output did not confirm import");
+  assert(fs.existsSync(previewPath), "view-browser did not create an HTML preview");
 
   const exportPath = path.join(tempRoot, "handoff.md");
   run(["export", "--repo", tempRoot, "--template", "handoff", "--output", exportPath]);

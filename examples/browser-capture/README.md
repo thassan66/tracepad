@@ -5,6 +5,12 @@ These fixtures demonstrate the Phase 1 browser capture workflow without real cus
 Run from any repository where you want to create a demo `.tracepad` session:
 
 ```bash
+tracepad view-browser /path/to/tracepad/examples/browser-capture/checkout-incident.capture.json
+```
+
+That is the quickest visual preview. For a fuller session with HAR evidence too:
+
+```bash
 tracepad init
 tracepad start "Checkout latency demo"
 tracepad import browser-capture --file /path/to/tracepad/examples/browser-capture/checkout-incident.capture.json --note "Demo browser session"

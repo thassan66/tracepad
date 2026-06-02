@@ -78,6 +78,9 @@ async function main() {
     case "import":
       await handlePluginImport(repoRoot, args, flags);
       return;
+    case "view-browser":
+      await handleViewBrowser(repoRoot, args, flags);
+      return;
     case "branch-sync":
       handleBranchSync(repoRoot, flags);
       return;
@@ -613,6 +616,66 @@ async function handlePluginImport(repoRoot, args, flags) {
   }
 
   process.stdout.write(`Importer ${importerName} added ${events.length} event(s) to ${session.id}\n`);
+}
+
+async function handleViewBrowser(repoRoot, args, flags) {
+  ensureStore(repoRoot);
+  const sourceArg = firstArg(args) || flags.file;
+  if (!sourceArg) {
+    fail("Usage: tracepad view-browser <browser-capture.json> [--output <file>] [--no-open]");
+  }
+
+  const sourcePath = path.isAbsolute(sourceArg) ? sourceArg : path.resolve(repoRoot, sourceArg);
+  if (!fs.existsSync(sourcePath) || !fs.statSync(sourcePath).isFile()) {
+    fail(`Browser capture file not found: ${sourcePath}`);
+  }
+
+  const title = flags.title ? String(flags.title).trim() : `Browser capture preview: ${path.basename(sourcePath)}`;
+  const session = createSession(repoRoot, [title], {
+    context: flags.context || `Preview generated from ${path.basename(sourcePath)}`,
+  });
+  const plugin = loadPlugin(repoRoot, "importers", "browser-capture");
+  if (!plugin || typeof plugin.importSessionData !== "function") {
+    fail("browser-capture importer must export importSessionData(context).");
+  }
+
+  const result = await plugin.importSessionData({
+    repoRoot,
+    session,
+    args: [],
+    flags: {
+      ...flags,
+      file: sourcePath,
+      note: flags.note || `Previewed ${path.basename(sourcePath)}`,
+    },
+    helpers: createPluginHelpers(repoRoot, session),
+  }) || {};
+
+  const events = Array.isArray(result.events) ? result.events : [];
+  for (const event of events) {
+    session.events.push({ at: isoNow(), ...event });
+  }
+  session.status = "closed";
+  session.events.push(
+    createEvent("status", {
+      state: "closed",
+      note: "Browser capture preview generated",
+    })
+  );
+  touchSession(session);
+  writeSession(repoRoot, session);
+
+  const template = normalizeTemplate(flags.template || "postmortem");
+  const outputPath = flags.output ? path.resolve(String(flags.output)) : defaultExportPath(repoRoot, session.id, "html");
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+  fs.writeFileSync(outputPath, `${renderExport(session, { format: "html", template })}\n`, "utf8");
+
+  process.stdout.write(`Browser capture preview imported ${events.length} event(s).\n`);
+  process.stdout.write(`Visual report: ${outputPath}\n`);
+  if (!flags["no-open"]) {
+    const opened = openFile(outputPath);
+    process.stdout.write(opened ? "Opened visual report.\n" : "Could not auto-open the report. Open the path above manually.\n");
+  }
 }
 
 function handleBranchSync(repoRoot, flags) {
@@ -2116,6 +2179,21 @@ function defaultExportPath(repoRoot, sessionId, format) {
   return path.join(exportsDir(repoRoot), `${sessionId}.${extension}`);
 }
 
+function openFile(filePath) {
+  const command = process.platform === "darwin" ? "open" : process.platform === "win32" ? "cmd" : "xdg-open";
+  const args = process.platform === "win32" ? ["/c", "start", "", filePath] : [filePath];
+  try {
+    const child = childProcess.spawn(command, args, {
+      detached: true,
+      stdio: "ignore",
+    });
+    child.unref();
+    return true;
+  } catch (error) {
+    return false;
+  }
+}
+
 function createSessionId() {
   const stamp = new Date().toISOString().replace(/[-:TZ.]/g, "").slice(0, 14);
   const suffix = Math.random().toString(36).slice(2, 6);
@@ -2423,6 +2501,9 @@ Commands:
   import <importer-name> [--file <path>] [--note "why this matters"]
       Run an importer plugin from src/plugins/importers or .tracepad/plugins/importers.
 
+  view-browser <browser-capture.json> [--output <file>] [--no-open]
+      Import a browser capture JSON file, generate an HTML report, and open it.
+
   diff [--staged] [--commit <ref>] [--note "why this diff matters"]
       Capture the current git diff or a committed snapshot into the session artifacts.
 
@@ -2455,6 +2536,7 @@ Examples:
   tracepad import plain-log --file ./logs/server.log --note "Failure excerpt"
   tracepad import browser-har --file ./debug.har --note "Browser network failures"
   tracepad import browser-capture --file ./browser-capture.json --note "Dashboard/browser investigation"
+  tracepad view-browser ./browser-capture.json
   tracepad diff --commit HEAD --note "Auto-captured committed changes"
   tracepad export --format html --template postmortem --output incident.html
   tracepad export --format json --output session.json
