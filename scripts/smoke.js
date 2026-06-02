@@ -164,8 +164,19 @@ try {
   const stopOutput = run(["stop", "--repo", tempRoot, "--summary", "Smoke session complete"]);
   assert(stopOutput.includes("Tracepad Session Complete"), "stop output did not render the CLI completion panel");
   assert(stopOutput.includes("Stopped session"), "stop output did not confirm the session stopped");
+  assert(stopOutput.includes("Final evidence:"), "stop output did not summarize final evidence capture");
   assert(stopOutput.includes("Visual report:"), "stop output did not include visual report path");
   assert(findFiles(path.join(tempRoot, ".tracepad", "exports")).some((filePath) => filePath.endsWith(".html")), "stop did not create an HTML report");
+
+  const reviewPath = path.join(tempRoot, "latest-review.html");
+  const reviewOutput = run(["review", "--repo", tempRoot, "--output", reviewPath, "--no-open"]);
+  assert(reviewOutput.includes("Tracepad Review Dashboard"), "review output did not render the CLI review panel");
+  assert(reviewOutput.includes("Visual report:"), "review output did not include the report path");
+  assert(fs.existsSync(reviewPath), "review did not create an HTML dashboard");
+  const reviewHtml = fs.readFileSync(reviewPath, "utf8");
+  assert(reviewHtml.includes("Review Workbench"), "review dashboard did not include the review workbench");
+  assert(reviewHtml.includes("AI Handoff Prompt"), "review dashboard did not include the AI handoff prompt");
+  assert(reviewHtml.includes("Search timeline"), "review dashboard did not include timeline search");
 
   const tracepadText = readAllText(path.join(tempRoot, ".tracepad"));
   assert(tracepadText.includes("access_token=[REDACTED]"), "expected redacted access_token in Tracepad store");

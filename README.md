@@ -99,6 +99,14 @@ Stop and export a visual report:
 tracepad stop "Root cause was a stale payment-status dependency"
 ```
 
+`stop` captures final git status and final working-tree diff when available, then writes the visual report. Use `--no-final-status` or `--no-final-diff` when you want to skip that final evidence.
+
+Reopen the latest dashboard any time:
+
+```bash
+tracepad review
+```
+
 `start`, `status`, `list`, `stop`, and `view-browser` render compact terminal panels with session metrics, recent timeline entries, next actions, and report paths.
 
 ## Browser Capture
@@ -161,6 +169,7 @@ Export redaction has two modes:
 Generate one manually:
 
 ```bash
+tracepad review
 tracepad export --format html --template postmortem --output ./incident.html
 tracepad export --redaction full --format html --template postmortem --output ./share-safe-incident.html
 open ./incident.html
@@ -194,6 +203,7 @@ tracepad start "Auth refresh bug"
 tracepad note "Fails only when cache is warm" --kind finding
 tracepad status
 tracepad stop "Root cause was duplicate refresh under warm cache"
+tracepad review
 ```
 
 Capture command outcomes:
@@ -237,6 +247,7 @@ tracepad export --template pr --output ./pr-brief.md
 tracepad export --template issue --output ./issue.md
 tracepad export --format html --template postmortem --output ./incident.html
 tracepad export --redaction full --format html --template postmortem --output ./share-safe-incident.html
+tracepad review
 tracepad export --format json --output ./session.json
 tracepad export --exporter slack --output ./session-slack.json
 ```
@@ -256,6 +267,7 @@ tracepad export --exporter slack --output ./session-slack.json
 - `cmd "command text" [--exit-code <n>] [--note "..."] [--source manual|passive-shell|history]`
 - `history [--shell powershell|bash|zsh] [--file <history-path>] [--limit <n>]`
 - `parse <log-file> [--context-lines 2] [--max-matches 200] [--note "..."]`
+- `review [session-id] [--output <file>] [--redaction normal|full] [--no-open]`
 - `import <importer-name> [--file <path>] [--note "..."]`
 - `view-browser <browser-capture.json> [--output <file>] [--redaction normal|full] [--no-open]`
 - `replay [session-id] [--format shell|markdown] [--output <file>]`
@@ -263,7 +275,7 @@ tracepad export --exporter slack --output ./session-slack.json
 - `capture`
 - `attach <file-path> [--note "..."] [--clip]`
 - `export [session-id] [--format markdown|html|json] [--template handoff|issue|pr|postmortem|slack] [--redaction normal|full] [--exporter <name>] [--output <file>]`
-- `stop [summary text] [--summary "..."] [--format html|markdown|json] [--redaction normal|full] [--output <file>]`
+- `stop [summary text] [--summary "..."] [--format html|markdown|json] [--redaction normal|full] [--output <file>] [--no-final-status] [--no-final-diff]`
 - `close [summary text] [--summary "..."]`
 
 ## Plugin Surface

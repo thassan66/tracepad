@@ -77,6 +77,9 @@ async function main() {
     case "replay":
       handleReplay(repoRoot, args, flags);
       return;
+    case "review":
+      handleReview(repoRoot, args, flags);
+      return;
     case "import":
       await handlePluginImport(repoRoot, args, flags);
       return;
@@ -549,6 +552,36 @@ function handleReplay(repoRoot, args, flags) {
   process.stdout.write(`Replayed session ${session.id} to ${outputPath}\n`);
 }
 
+function handleReview(repoRoot, args, flags) {
+  ensureStore(repoRoot);
+  const session = resolveReviewSession(repoRoot, args, flags);
+  const template = normalizeTemplate(flags.template || "handoff");
+  const redaction = normalizeRedactionMode(flags.redaction || (flags["full-redaction"] ? "full" : "normal"));
+  const outputPath = flags.output ? path.resolve(String(flags.output)) : defaultExportPath(repoRoot, session.id, "html");
+
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+  fs.writeFileSync(outputPath, `${renderExport(session, { format: "html", template, redaction })}\n`, "utf8");
+
+  const lines = [
+    `Session: ${session.id}`,
+    `Title: ${session.title}`,
+    `Status: ${session.status}`,
+    `Redaction: ${redaction}`,
+    `Visual report: ${outputPath}`,
+    "",
+    "Next:",
+    "  open the visual report path above",
+    `  tracepad export ${session.id} --format markdown --template handoff --output handoff.md`,
+  ];
+
+  if (!flags["no-open"]) {
+    const opened = openFile(outputPath);
+    lines.push(opened ? "Opened visual report." : "Could not auto-open the report. Open the path above manually.");
+  }
+
+  process.stdout.write(`${renderCliPanel("Tracepad Review Dashboard", lines)}\n`);
+}
+
 async function handlePluginImport(repoRoot, args, flags) {
   ensureStore(repoRoot);
   const importerName = firstArg(args);
@@ -682,35 +715,22 @@ function handleBranchSync(repoRoot, flags) {
 function handleDiffSnapshot(repoRoot, flags) {
   ensureStore(repoRoot);
   const session = resolveSession(repoRoot, [], flags, { allowPositionalId: false });
-  const staged = Boolean(flags.staged);
-  const commitRef = flags.commit ? String(flags.commit).trim() : "";
-  const git = commitRef
-    ? runGit(repoRoot, ["show", "--no-color", commitRef])
-    : runGit(repoRoot, staged ? ["diff", "--staged", "--no-color"] : ["diff", "--no-color"]);
+  const result = captureGitDiffSnapshot(repoRoot, session, {
+    staged: Boolean(flags.staged),
+    commitRef: flags.commit ? String(flags.commit).trim() : "",
+    note: flags.note ? String(flags.note).trim() : "",
+  });
 
-  if (git.error) {
-    fail(`Could not capture git diff: ${git.error}`);
+  if (result.error) {
+    fail(`Could not capture git diff: ${result.error}`);
   }
-
-  const diffText = git.output;
-  if (!diffText.trim()) {
+  if (!result.captured) {
     process.stdout.write("No git diff output to capture.\n");
     return;
   }
 
-  const fileName = commitRef ? `commit-${sanitizeFileName(commitRef)}.patch` : `${staged ? "staged" : "working-tree"}-diff.patch`;
-  const storedPath = storeArtifactText(repoRoot, session.id, diffText, fileName);
-  session.events.push(
-    createEvent("snapshot", {
-      snapshotKind: commitRef ? "git-show" : staged ? "git-diff-staged" : "git-diff",
-      storedPath,
-      changedFiles: countChangedFiles(diffText),
-      note: redactText(flags.note ? String(flags.note).trim() : ""),
-    })
-  );
-  touchSession(session);
   writeSession(repoRoot, session);
-  process.stdout.write(`Captured git diff snapshot to ${storedPath}\n`);
+  process.stdout.write(`Captured git diff snapshot to ${result.path}\n`);
 }
 
 function captureGitStatusSnapshot(repoRoot, session, note) {
@@ -736,6 +756,36 @@ function captureGitStatusSnapshot(repoRoot, session, note) {
       storedPath,
       changedFiles,
       note: note || "",
+    })
+  );
+  touchSession(session);
+  return { captured: true, path: storedPath };
+}
+
+function captureGitDiffSnapshot(repoRoot, session, options) {
+  const staged = Boolean(options && options.staged);
+  const commitRef = options && options.commitRef ? String(options.commitRef).trim() : "";
+  const git = commitRef
+    ? runGit(repoRoot, ["show", "--no-color", commitRef])
+    : runGit(repoRoot, staged ? ["diff", "--staged", "--no-color"] : ["diff", "--no-color"]);
+
+  if (git.error) {
+    return { captured: false, error: git.error };
+  }
+
+  const diffText = git.output;
+  if (!diffText.trim()) {
+    return { captured: false };
+  }
+
+  const fileName = commitRef ? `commit-${sanitizeFileName(commitRef)}.patch` : `${staged ? "staged" : "working-tree"}-diff.patch`;
+  const storedPath = storeArtifactText(repoRoot, session.id, diffText, fileName);
+  session.events.push(
+    createEvent("snapshot", {
+      snapshotKind: commitRef ? "git-show" : staged ? "git-diff-staged" : "git-diff",
+      storedPath,
+      changedFiles: countChangedFiles(diffText),
+      note: redactText(options && options.note ? String(options.note).trim() : ""),
     })
   );
   touchSession(session);
@@ -929,9 +979,28 @@ function handleStop(repoRoot, args, flags) {
   ensureStore(repoRoot);
   const session = resolveSession(repoRoot, args, flags, { allowPositionalId: false });
   const summary = redactText(flags.summary ? String(flags.summary).trim() : joinArgs(args));
+  const captured = [];
 
   if (summary) {
     session.summary = summary;
+  }
+
+  if (!flags["no-final-status"]) {
+    const result = captureGitStatusSnapshot(repoRoot, session, "Final git status before stop");
+    if (result.captured) {
+      captured.push("git status");
+    }
+  }
+
+  if (!flags["no-final-diff"]) {
+    const result = captureGitDiffSnapshot(repoRoot, session, {
+      note: "Final working tree diff before stop",
+    });
+    if (result.error) {
+      captured.push(`git diff failed: ${result.error}`);
+    } else if (result.captured) {
+      captured.push("git diff");
+    }
   }
 
   session.status = "closed";
@@ -957,7 +1026,7 @@ function handleStop(repoRoot, args, flags) {
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
   fs.writeFileSync(outputPath, `${renderExport(session, { format, template, redaction })}\n`, "utf8");
 
-  process.stdout.write(renderCliStop(session, outputPath, redaction));
+  process.stdout.write(renderCliStop(session, outputPath, redaction, captured));
 }
 
 function handleExport(repoRoot, args, flags) {
@@ -2379,16 +2448,19 @@ function renderCliStatus(session) {
   return `${renderCliPanel(`${TOOL_NAME} Status`, lines)}\n`;
 }
 
-function renderCliStop(session, outputPath, redaction) {
+function renderCliStop(session, outputPath, redaction, captured) {
   const summary = summarizeSession(session);
+  const finalEvidence = Array.isArray(captured) && captured.length > 0 ? captured.join(", ") : "none";
   const lines = [
     `Stopped session ${session.id}: ${session.title}`,
     `Captured ${session.events.length} event(s), ${summary.commandCount} command(s), ${summary.noteCount} note(s), ${summary.snapshotCount} snapshot(s).`,
+    `Final evidence: ${finalEvidence}`,
     `Redaction: ${redaction || "normal"}`,
     `Visual report: ${outputPath}`,
     "",
     "Review:",
     "  open the visual report path above",
+    "  tracepad review",
     `  tracepad status ${session.id}`,
   ];
   return `${renderCliPanel("Tracepad Session Complete", lines)}\n`;
@@ -2856,6 +2928,33 @@ function resolveSession(repoRoot, args, flags, options) {
   }
 
   fail("No active session. Start one with: tracepad start \"title\"");
+}
+
+function resolveReviewSession(repoRoot, args, flags) {
+  const requestedId = flags.session ? String(flags.session) : firstArg(args);
+  if (requestedId) {
+    return readSession(repoRoot, requestedId);
+  }
+
+  const state = getState(repoRoot);
+  if (state.activeSessionId) {
+    return readSession(repoRoot, state.activeSessionId);
+  }
+
+  const branch = detectGitBranch(repoRoot);
+  if (branch) {
+    const matched = findBranchSession(repoRoot, branch);
+    if (matched) {
+      return matched;
+    }
+  }
+
+  const latest = listSessions(repoRoot).sort((left, right) => right.updatedAt.localeCompare(left.updatedAt))[0];
+  if (latest) {
+    return latest;
+  }
+
+  fail("No sessions found. Start one with: tracepad start \"title\"");
 }
 
 function ensureStore(repoRoot) {
@@ -3699,6 +3798,9 @@ Commands:
   replay [session-id] [--format shell|markdown] [--output <file>]
       Reconstruct the recorded command trail for reproduction.
 
+  review [session-id] [--output <file>] [--redaction normal|full] [--no-open]
+      Generate and open the latest visual review dashboard. Defaults to the active or latest session.
+
   import <importer-name> [--file <path>] [--note "why this matters"]
       Run an importer plugin from src/plugins/importers or .tracepad/plugins/importers.
 
@@ -3717,8 +3819,8 @@ Commands:
   export [session-id] [--format markdown|html|json] [--template handoff|issue|pr|postmortem|slack] [--redaction normal|full] [--exporter <name>] [--output <file>]
       Export the session as a polished brief or through an exporter plugin.
 
-  stop [summary text] [--summary "summary text"] [--format html|markdown|json] [--redaction normal|full] [--output <file>]
-      Stop the active session and write a report. Defaults to HTML.
+  stop [summary text] [--summary "summary text"] [--format html|markdown|json] [--redaction normal|full] [--output <file>] [--no-final-status] [--no-final-diff]
+      Stop the active session, capture final git status/diff when available, and write a report. Defaults to HTML.
 
   close [summary text] [--summary "summary text"]
       Close the active session and optionally store a final summary.
@@ -3734,6 +3836,7 @@ Examples:
   tracepad attach --clip --note "Stack trace copied from console"
   tracepad parse ./logs/server.log --note "Trimmed fatal error excerpt"
   tracepad replay --format markdown
+  tracepad review
   tracepad import plain-log --file ./logs/server.log --note "Failure excerpt"
   tracepad import browser-har --file ./debug.har --note "Browser network failures"
   tracepad import browser-capture --file ./browser-capture.json --note "Dashboard/browser investigation"
