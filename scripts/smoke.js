@@ -75,6 +75,11 @@ try {
   assert(status.includes("Events:"), "status output did not include event count");
   assert(fs.existsSync(exportPath), "handoff export was not created");
 
+  const stopOutput = run(["stop", "--repo", tempRoot, "--summary", "Smoke session complete"]);
+  assert(stopOutput.includes("Stopped session"), "stop output did not confirm the session stopped");
+  assert(stopOutput.includes("Visual report:"), "stop output did not include visual report path");
+  assert(findFiles(path.join(tempRoot, ".tracepad", "exports")).some((filePath) => filePath.endsWith(".html")), "stop did not create an HTML report");
+
   const tracepadText = readAllText(path.join(tempRoot, ".tracepad"));
   assert(tracepadText.includes("access_token=[REDACTED]"), "expected redacted access_token in Tracepad store");
   assert(!tracepadText.includes("secret-token"), "secret token was stored without redaction");
@@ -95,4 +100,17 @@ function readAllText(dir) {
     }
   }
   return chunks.join("\n");
+}
+
+function findFiles(dir) {
+  const files = [];
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const itemPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...findFiles(itemPath));
+    } else if (entry.isFile()) {
+      files.push(itemPath);
+    }
+  }
+  return files;
 }

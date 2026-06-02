@@ -48,20 +48,32 @@ tracepad --help
 From the `tracepad` folder:
 
 ```bash
-node ./bin/tracepad.js init --repo /path/to/repo --hooks
-node ./bin/tracepad.js alias setup --shell powershell
-node ./bin/tracepad.js record "Auth refresh bug" --repo /path/to/repo --context "Fails after warm cache"
+node ./bin/tracepad.js init --repo /path/to/repo --shell
+node ./bin/tracepad.js start "Auth refresh bug" --repo /path/to/repo
 ```
 
 That flow will:
 
 - create `.tracepad`
-- install optional git hooks
-- print shell integration for passive command capture
-- start a session
-- capture a baseline `git status` snapshot
-- import recent shell history
-- open compact capture mode
+- install passive terminal capture into your shell profile
+- start a debugging session
+- record future terminal commands automatically after you reload your shell profile or open a new terminal
+
+Then debug normally:
+
+```bash
+npm test
+git diff
+curl http://localhost:3000/health
+```
+
+Stop and export a visual report:
+
+```bash
+node ./bin/tracepad.js stop --repo /path/to/repo "Root cause was duplicate refresh under warm cache"
+```
+
+`stop` closes the session and writes an HTML handoff under `.tracepad/exports/`.
 
 ## Core workflow
 
@@ -70,6 +82,8 @@ Start a session:
 ```bash
 node ./bin/tracepad.js start "NPE after token refresh" --repo /path/to/repo
 ```
+
+After `tracepad init --shell`, Tracepad passively records normal terminal commands while a session is active. A standalone CLI cannot record commands after it exits unless this shell integration has been installed.
 
 Add notes:
 
@@ -89,6 +103,7 @@ node ./bin/tracepad.js cmd "npm test" --repo /path/to/repo --source passive-shel
 Install passive shell capture:
 
 ```bash
+node ./bin/tracepad.js init --shell
 node ./bin/tracepad.js alias setup --shell bash
 node ./bin/tracepad.js alias setup --shell zsh
 node ./bin/tracepad.js alias setup --shell powershell --install
@@ -160,7 +175,7 @@ Demo browser capture fixtures are available in [examples/browser-capture](exampl
 Close the session:
 
 ```bash
-node ./bin/tracepad.js close --repo /path/to/repo --summary "Root cause was duplicate refresh under warm cache"
+node ./bin/tracepad.js stop --repo /path/to/repo --summary "Root cause was duplicate refresh under warm cache"
 ```
 
 ## Commands
@@ -184,6 +199,7 @@ node ./bin/tracepad.js close --repo /path/to/repo --summary "Root cause was dupl
 - `capture`
 - `attach <file-path> [--note "..."] [--clip]`
 - `export [session-id] [--format markdown|html|json] [--template handoff|issue|pr|postmortem|slack] [--exporter <name>] [--output <file>]`
+- `stop [summary text] [--summary "..."] [--format html|markdown|json] [--output <file>]`
 - `close [summary text] [--summary "..."]`
 
 ## Git hook automation
