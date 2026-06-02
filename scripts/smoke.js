@@ -106,6 +106,9 @@ try {
   const previewOutput = run(["view-browser", browserCapturePath, "--repo", tempRoot, "--output", previewPath, "--no-open"]);
   assert(previewOutput.includes("Browser capture preview imported"), "view-browser output did not confirm import");
   assert(fs.existsSync(previewPath), "view-browser did not create an HTML preview");
+  const previewHtml = fs.readFileSync(previewPath, "utf8");
+  assert(previewHtml.includes("Browser Evidence Board"), "view-browser preview did not render browser evidence board");
+  assert(previewHtml.includes("timeline-controls"), "view-browser preview did not render timeline filters");
 
   const exportPath = path.join(tempRoot, "handoff.md");
   run(["export", "--repo", tempRoot, "--template", "handoff", "--output", exportPath]);
