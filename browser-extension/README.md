@@ -98,7 +98,7 @@ The extension records:
 - page headings to identify the current screen
 - visible-tab screenshots
 - page errors and unhandled promise rejections
-- `console.error` and `console.warn` calls when the page hook can be injected
+- `console.error` calls when the page hook can be injected
 - failed network requests
 - HTTP 4xx and 5xx responses
 
