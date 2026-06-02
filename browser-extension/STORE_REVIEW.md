@@ -37,7 +37,7 @@ Tracepad Browser Capture is a local-first debugging aid. It records browser evid
 - Use `Alt+Shift+S` to capture selected text.
 - Use `Alt+Shift+D` to capture visible page text and log/details content.
 - Use `Alt+Shift+P` to capture a visible-tab screenshot.
-- Use `Alt+Shift+N` to prompt for and save a manual note.
+- Use the popup to add a manual note. Optionally bind the note command in `chrome://extensions/shortcuts`.
 - Verify shortcut customization is available under `chrome://extensions/shortcuts`.
 - Use **Export** and import the JSON with `tracepad import browser-capture --file <downloaded-json>`.
 - Use **Clear capture** and verify state resets.
