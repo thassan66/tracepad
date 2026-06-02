@@ -59,10 +59,10 @@ Default shortcuts:
 - `Alt+Shift+S`: capture selected text
 - `Alt+Shift+P`: capture visible-tab screenshot
 - `Alt+Shift+D`: capture visible page text and log/details content
-- `Alt+Shift+N`: prompt for a manual note
 
 Additional commands are available without default bindings:
 
+- prompt for and save a manual note
 - export capture JSON
 - clear capture state
 

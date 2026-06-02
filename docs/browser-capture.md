@@ -73,7 +73,8 @@ Default extension shortcuts:
 - `Alt+Shift+S`: capture selected text
 - `Alt+Shift+P`: capture visible-tab screenshot
 - `Alt+Shift+D`: capture visible page text and log/details content
-- `Alt+Shift+N`: prompt for a manual note
+
+Manual notes are available from the popup. The note command can also be bound manually in `chrome://extensions/shortcuts`.
 
 Automatic browser capture records browser-level signals such as tab context, console errors, failed network requests, and HTTP 4xx/5xx events. When you are looking at page content that matters, such as Grafana panel text, OpenShift pod details, ArgoCD sync messages, CI/CD logs, Kubernetes events, or an app error state, use the extension **Page** action or `Alt+Shift+D`. That snapshots readable visible text, headings, log/code/table regions, and selected text into the Tracepad export.
 

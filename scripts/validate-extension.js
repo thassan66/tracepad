@@ -56,6 +56,9 @@ for (const command of requiredCommands) {
   assert(manifest.commands[command].description, `Missing description for extension command: ${command}`);
 }
 
+const defaultShortcutCount = Object.values(manifest.commands || {}).filter((command) => command.suggested_key).length;
+assert(defaultShortcutCount <= 4, "Chrome allows at most 4 default extension command shortcuts.");
+
 for (const script of ["content.js", "page-hook.js", "popup.js", "service_worker.js"]) {
   childProcess.execFileSync(process.execPath, ["-c", path.join(extensionDir, script)], { stdio: "pipe" });
 }

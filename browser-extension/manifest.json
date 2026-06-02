@@ -51,10 +51,6 @@
       "description": "Capture visible page text and log/details content"
     },
     "add-note": {
-      "suggested_key": {
-        "default": "Alt+Shift+N",
-        "mac": "Alt+Shift+N"
-      },
       "description": "Prompt for a manual note"
     },
     "export-capture": {
