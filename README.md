@@ -103,6 +103,7 @@ Phase 1 supports generic browser capture data:
 - console errors
 - failed network requests
 - HTTP 4xx/5xx events
+- visible page/log/detail snapshots via the extension Page action
 - selected text
 - manual notes
 - dashboard and app context
@@ -116,6 +117,8 @@ tracepad view-browser ./browser-capture.json
 ```
 
 That creates a Tracepad session, imports the browser evidence, generates an HTML report, and opens it.
+
+The extension records console/network failures automatically while recording is on. Use **Page** or `Alt+Shift+D` when you want Tracepad to read the current screen itself, such as logs, tables, Kubernetes details, CI/CD output, or dashboard panel text.
 
 A no-build browser extension MVP is available in [browser-extension](browser-extension/README.md). Demo fixtures are available in [examples/browser-capture](examples/browser-capture/README.md).
 

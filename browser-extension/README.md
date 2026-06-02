@@ -45,10 +45,11 @@ In the extension popup:
 
 1. Select **Start**.
 2. Debug across browser tabs.
-3. Capture selected text when useful.
-4. Capture screenshots at important points.
-5. Add manual notes.
-6. Select **Export**.
+3. Select **Page** when the current screen shows logs, tables, dashboard details, or app state you want Tracepad to read.
+4. Capture selected text when a specific line matters.
+5. Capture screenshots at important points.
+6. Add manual notes.
+7. Select **Export**.
 
 ## Keyboard Shortcuts
 
@@ -57,6 +58,7 @@ Default shortcuts:
 - `Alt+Shift+T`: start or stop browser capture
 - `Alt+Shift+S`: capture selected text
 - `Alt+Shift+P`: capture visible-tab screenshot
+- `Alt+Shift+D`: capture visible page text and log/details content
 - `Alt+Shift+N`: prompt for a manual note
 
 Additional commands are available without default bindings:
@@ -91,11 +93,16 @@ The extension records:
 - tab title and URL
 - manual notes
 - selected text
+- visible page text captured with **Page**
+- log, code, table, terminal, console, and detail-panel text captured with **Page**
+- page headings to identify the current screen
 - visible-tab screenshots
 - page errors and unhandled promise rejections
 - `console.error` and `console.warn` calls when the page hook can be injected
 - failed network requests
 - HTTP 4xx and 5xx responses
+
+The extension cannot safely know which page areas matter in every internal tool. Automatic capture records browser-level signals such as console and network failures. Use **Page** or `Alt+Shift+D` while looking at a log view, dashboard panel, Kubernetes detail page, CI/CD output, or app UI state to capture the readable page content itself.
 
 ## Privacy
 

@@ -25,6 +25,7 @@ const requiredCommands = new Set([
   "toggle-capture",
   "capture-selection",
   "capture-screenshot",
+  "capture-page",
   "add-note",
   "export-capture",
   "clear-capture",

@@ -91,6 +91,10 @@ p {
   margin-bottom: 12px;
 }
 
+.actions button:last-child:nth-child(odd) {
+  grid-column: 1 / -1;
+}
+
 button {
   min-height: 34px;
   border: 1px solid var(--accent);

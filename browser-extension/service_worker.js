@@ -67,6 +67,9 @@ async function handleMessage(message, sender) {
   if (type === "tracepad:capture-selection") {
     return captureSelection();
   }
+  if (type === "tracepad:capture-page") {
+    return capturePageContent(message.note || "");
+  }
   if (type === "tracepad:capture-screenshot") {
     return captureScreenshot(message.note || "");
   }
@@ -95,6 +98,10 @@ async function handleCommand(command) {
   }
   if (command === "capture-screenshot") {
     await captureScreenshot("Captured by keyboard shortcut");
+    return;
+  }
+  if (command === "capture-page") {
+    await capturePageContent("Captured by keyboard shortcut");
     return;
   }
   if (command === "add-note") {
@@ -210,6 +217,33 @@ async function captureScreenshot(note) {
       fileName: `tracepad-screenshot-${stamp}.png`,
       dataUrl,
     },
+    at: isoNow(),
+  });
+  await saveState(state);
+  return state;
+}
+
+async function capturePageContent(note) {
+  const state = await requireRecording();
+  const active = await getActiveTab();
+  if (!active || typeof active.id !== "number") {
+    throw new Error("No active browser tab found.");
+  }
+  const context = await getPageContext(active);
+  upsertTab(state, context);
+  const message = context.message || context.pageText || context.logText || context.selectedText || "";
+  if (!message) {
+    throw new Error("No readable page content found on the active tab.");
+  }
+  state.events.push({
+    type: "page",
+    title: context.title,
+    url: context.url,
+    message: `${String(note || "").trim() ? `${String(note || "").trim()}\n\n` : ""}${message}`,
+    selectedText: context.selectedText || "",
+    pageText: context.pageText || "",
+    logText: context.logText || "",
+    headings: context.headings || [],
     at: isoNow(),
   });
   await saveState(state);
@@ -343,6 +377,23 @@ async function getTabContext(tab) {
     try {
       await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["content.js"] });
       return await chrome.tabs.sendMessage(tab.id, { type: "tracepad:capture-context" });
+    } catch (innerError) {
+      return fallback;
+    }
+  }
+}
+
+async function getPageContext(tab) {
+  const fallback = await getTabContext(tab);
+  if (typeof tab.id !== "number" || !isInjectableUrl(tab.url || "")) {
+    return fallback;
+  }
+  try {
+    return await chrome.tabs.sendMessage(tab.id, { type: "tracepad:capture-page" });
+  } catch (error) {
+    try {
+      await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ["content.js"] });
+      return await chrome.tabs.sendMessage(tab.id, { type: "tracepad:capture-page" });
     } catch (innerError) {
       return fallback;
     }

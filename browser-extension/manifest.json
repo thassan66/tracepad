@@ -43,6 +43,13 @@
       },
       "description": "Capture a visible-tab screenshot"
     },
+    "capture-page": {
+      "suggested_key": {
+        "default": "Alt+Shift+D",
+        "mac": "Alt+Shift+D"
+      },
+      "description": "Capture visible page text and log/details content"
+    },
     "add-note": {
       "suggested_key": {
         "default": "Alt+Shift+N",

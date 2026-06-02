@@ -93,6 +93,16 @@ try {
             at: "2026-06-02T10:00:01.500Z",
           },
           {
+            type: "page",
+            title: "Tracepad Smoke",
+            url: "https://example.local/debug",
+            message: "Captured visible CI/CD page details",
+            pageText: "Checkout pipeline failed at deploy step",
+            logText: "ERROR deploy checkout-api returned HTTP 503",
+            headings: ["Checkout Pipeline", "Deploy Logs"],
+            at: "2026-06-02T10:00:01.750Z",
+          },
+          {
             type: "network",
             method: "GET",
             url: "https://api.example.local/status?access_token=secret-token",
@@ -124,6 +134,8 @@ try {
   assert(previewHtml.includes('data-event-kinds="'), "timeline cards did not render filter categories");
   assert(previewHtml.includes("image-preview-button"), "HTML preview did not render clickable image previews");
   assert(previewHtml.includes("openImagePreview"), "HTML preview did not include image preview controls");
+  assert(previewHtml.includes("Checkout pipeline failed at deploy step"), "page capture text did not render in the preview");
+  assert(previewHtml.includes("ERROR deploy checkout-api returned HTTP 503"), "page capture log text did not render in the preview");
 
   const fullPreviewPath = path.join(tempRoot, "browser-preview-full.html");
   const fullPreviewOutput = run(["view-browser", browserCapturePath, "--repo", tempRoot, "--output", fullPreviewPath, "--no-open", "--redaction", "full"]);

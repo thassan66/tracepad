@@ -35,6 +35,8 @@ The demo models a common investigation path:
 - The app UI logs a browser console error.
 - A browser network request returns HTTP 503.
 
+In the browser extension, use **Page** or `Alt+Shift+D` when a screen contains useful logs or details. That captures readable visible page text, headings, and log/code/table regions. Tab names and URLs are only context; Page capture is what records the on-screen details you are reading.
+
 The sample token-like query value is intentionally fake and should be redacted by Tracepad on import.
 
 The browser capture JSON fixture is intentionally not meant to be read directly. `tracepad view-browser` turns it into a visual report with:
@@ -42,6 +44,7 @@ The browser capture JSON fixture is intentionally not meant to be read directly.
 - an investigation brief
 - browser evidence cards
 - captured tabs and URLs
+- visible page/log/detail snapshots when Page capture is used
 - console and failed network signals
 - filterable timeline events
 - clickable screenshot previews with open and zoom controls

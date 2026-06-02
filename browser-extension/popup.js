@@ -5,6 +5,7 @@ const els = {
   eventCount: document.getElementById("eventCount"),
   startButton: document.getElementById("startButton"),
   selectionButton: document.getElementById("selectionButton"),
+  pageButton: document.getElementById("pageButton"),
   screenshotButton: document.getElementById("screenshotButton"),
   exportButton: document.getElementById("exportButton"),
   noteInput: document.getElementById("noteInput"),
@@ -15,6 +16,7 @@ const els = {
 
 els.startButton.addEventListener("click", () => runAction("tracepad:start", {}, "Capture started"));
 els.selectionButton.addEventListener("click", () => runAction("tracepad:capture-selection", {}, "Selection captured"));
+els.pageButton.addEventListener("click", () => runAction("tracepad:capture-page", {}, "Page details captured"));
 els.screenshotButton.addEventListener("click", () => runAction("tracepad:capture-screenshot", {}, "Screenshot captured"));
 els.exportButton.addEventListener("click", () => runAction("tracepad:export", {}, "Capture exported"));
 els.clearButton.addEventListener("click", () => runAction("tracepad:clear", {}, "Capture cleared"));
@@ -73,6 +75,7 @@ function render(state) {
   els.startButton.textContent = recording ? "Restart" : "Start";
   els.startButton.disabled = false;
   els.selectionButton.disabled = !recording;
+  els.pageButton.disabled = !recording;
   els.screenshotButton.disabled = !recording;
   els.noteButton.disabled = !recording;
   els.exportButton.disabled = eventCount === 0 && tabCount === 0;
