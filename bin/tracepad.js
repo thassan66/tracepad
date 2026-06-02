@@ -90,6 +90,9 @@ async function main() {
     case "attach":
       handleAttach(repoRoot, args, flags);
       return;
+    case "stop":
+      handleStop(repoRoot, args, flags);
+      return;
     case "close":
       handleClose(repoRoot, args, flags);
       return;
@@ -153,7 +156,13 @@ function handleInit(repoRoot, flags) {
   if (flags.hooks) {
     installHooks(repoRoot);
   }
+  if (flags.shell || flags["install-shell"]) {
+    installShellIntegration(flags.shell);
+  }
   process.stdout.write(`${TOOL_NAME} store ready at ${storeDir(repoRoot)}\n`);
+  if (flags.shell || flags["install-shell"]) {
+    process.stdout.write("Passive terminal capture is installed. Open a new shell or reload your profile before starting a session.\n");
+  }
 }
 
 function handleAlias(args, flags) {
@@ -162,19 +171,23 @@ function handleAlias(args, flags) {
     fail("Usage: tracepad alias setup [--shell bash|zsh|powershell] [--install]");
   }
 
-  const shell = determineShellName(flags.shell);
-  const snippet = renderShellIntegration(shell);
   if (flags.install) {
-    const profilePath = resolveShellProfile(shell);
-    if (!profilePath) {
-      fail(`Cannot auto-install shell integration for ${shell}. Print the snippet and add it manually.`);
-    }
-    upsertProfileBlock(profilePath, snippet);
-    process.stdout.write(`Installed Tracepad shell integration in ${profilePath}\n`);
+    installShellIntegration(flags.shell);
     return;
   }
 
-  process.stdout.write(`${snippet}\n`);
+  process.stdout.write(`${renderShellIntegration(determineShellName(flags.shell))}\n`);
+}
+
+function installShellIntegration(shellFlag) {
+  const shell = determineShellName(shellFlag);
+  const snippet = renderShellIntegration(shell);
+  const profilePath = resolveShellProfile(shell);
+  if (!profilePath) {
+    fail(`Cannot auto-install shell integration for ${shell}. Print the snippet and add it manually.`);
+  }
+  upsertProfileBlock(profilePath, snippet);
+  process.stdout.write(`Installed Tracepad shell integration in ${profilePath}\n`);
 }
 
 function handleStart(repoRoot, args, flags) {
@@ -183,6 +196,8 @@ function handleStart(repoRoot, args, flags) {
   writeSession(repoRoot, session);
   setActiveSessionId(repoRoot, session.id);
   process.stdout.write(`Started session ${session.id}: ${session.title}\n`);
+  process.stdout.write("Run your normal terminal commands now. If shell capture is installed, Tracepad records them automatically.\n");
+  process.stdout.write("Stop and export with: tracepad stop\n");
 }
 
 async function handleRecord(repoRoot, args, flags) {
@@ -870,6 +885,43 @@ function handleClose(repoRoot, args, flags) {
   }
 
   process.stdout.write(`Closed session ${session.id}\n`);
+}
+
+function handleStop(repoRoot, args, flags) {
+  ensureStore(repoRoot);
+  const session = resolveSession(repoRoot, args, flags, { allowPositionalId: false });
+  const summary = redactText(flags.summary ? String(flags.summary).trim() : joinArgs(args));
+
+  if (summary) {
+    session.summary = summary;
+  }
+
+  session.status = "closed";
+  session.events.push(
+    createEvent("status", {
+      state: "closed",
+      note: summary || "",
+    })
+  );
+  touchSession(session);
+  writeSession(repoRoot, session);
+
+  const state = getState(repoRoot);
+  if (state.activeSessionId === session.id) {
+    state.activeSessionId = null;
+    writeState(repoRoot, state);
+  }
+
+  const format = normalizeFormat(flags.format || "html", flags.output);
+  const template = normalizeTemplate(flags.template || "handoff");
+  const outputPath = flags.output ? path.resolve(String(flags.output)) : defaultExportPath(repoRoot, session.id, format);
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+  fs.writeFileSync(outputPath, `${renderExport(session, { format, template })}\n`, "utf8");
+
+  const summaryModel = summarizeSession(session);
+  process.stdout.write(`Stopped session ${session.id}: ${session.title}\n`);
+  process.stdout.write(`Captured ${session.events.length} event(s), ${summaryModel.commandCount} command(s), ${summaryModel.noteCount} note(s), ${summaryModel.snapshotCount} snapshot(s).\n`);
+  process.stdout.write(`Visual report: ${outputPath}\n`);
 }
 
 function handleExport(repoRoot, args, flags) {
@@ -1758,6 +1810,9 @@ function findBranchSession(repoRoot, branch) {
 }
 
 function determineShellName(shellFlag) {
+  if (shellFlag === true) {
+    return process.platform === "win32" ? "powershell" : process.env.SHELL && process.env.SHELL.includes("zsh") ? "zsh" : "bash";
+  }
   const explicit = String(shellFlag || "").trim().toLowerCase();
   if (explicit) {
     return explicit;
@@ -2057,7 +2112,8 @@ function storeArtifactBuffer(repoRoot, sessionId, buffer, fileName) {
 }
 
 function defaultExportPath(repoRoot, sessionId, format) {
-  return path.join(exportsDir(repoRoot), `${sessionId}.${format === "html" ? "html" : "md"}`);
+  const extension = format === "html" ? "html" : format === "json" ? "json" : "md";
+  return path.join(exportsDir(repoRoot), `${sessionId}.${extension}`);
 }
 
 function createSessionId() {
@@ -2310,13 +2366,20 @@ Usage:
   tracepad <command> [arguments] [--repo <path>]
 
 High-signal workflow:
-  record "title"
-      Start a session, capture git status, import recent shell history, and drop into capture mode.
+  init --shell
+      Install passive terminal capture once for this machine.
+
+  start "title"
+      Start a debugging session. Then run normal terminal commands.
+
+  stop [summary]
+      Close the session and write a visual HTML report.
 
 Commands:
-  init [--hooks] [--no-gitignore]
+  init [--hooks] [--shell [bash|zsh|powershell]] [--install-shell] [--no-gitignore]
       Create the local .tracepad store in the target repo.
-      Add --hooks to install Tracepad git hook automation. Updates .gitignore by default.
+      Add --shell to install passive terminal capture. Add --hooks to install git hook automation.
+      Updates .gitignore by default.
 
   alias setup [--shell bash|zsh|powershell] [--install]
       Print or install shell integration that passively records terminal commands.
@@ -2372,13 +2435,19 @@ Commands:
   export [session-id] [--format markdown|html|json] [--template handoff|issue|pr|postmortem|slack] [--exporter <name>] [--output <file>]
       Export the session as a polished brief or through an exporter plugin.
 
+  stop [summary text] [--summary "summary text"] [--format html|markdown|json] [--output <file>]
+      Stop the active session and write a report. Defaults to HTML.
+
   close [summary text] [--summary "summary text"]
       Close the active session and optionally store a final summary.
 
 Examples:
-  tracepad init --hooks
+  tracepad init --shell
+  tracepad start "Auth refresh bug"
+  npm test
+  git diff
+  tracepad stop "Root cause was duplicate token refresh"
   tracepad alias setup --shell powershell
-  tracepad record "Auth refresh bug" --context "User login fails after warm cache"
   tracepad cmd "npm test" --source passive-shell --exit-code 1
   tracepad attach --clip --note "Stack trace copied from console"
   tracepad parse ./logs/server.log --note "Trimmed fatal error excerpt"
