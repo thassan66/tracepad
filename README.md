@@ -167,6 +167,12 @@ node ./bin/tracepad.js import browser-capture --repo /path/to/repo --file ./brow
 node ./bin/tracepad.js export --repo /path/to/repo --format html --template postmortem --output ./browser-debug.html
 ```
 
+Preview a browser extension JSON export in one command:
+
+```bash
+node ./bin/tracepad.js view-browser ./browser-capture.json
+```
+
 Browser capture is generic and file-based in Phase 1. It can capture tab titles and URLs, console errors, failed network requests, HTTP 4xx/5xx events, selected text, manual notes, screenshots, and dashboard/app context from tools such as Grafana, OpenShift, ArgoCD, Kubernetes dashboards, CI/CD pages, internal admin portals, and app UIs. See [docs/browser-capture.md](docs/browser-capture.md).
 
 A no-build browser extension MVP is available in [browser-extension](browser-extension/README.md). It supports keyboard shortcuts for start/stop, selected text capture, screenshot capture, and manual note capture.
@@ -195,6 +201,7 @@ node ./bin/tracepad.js stop --repo /path/to/repo --summary "Root cause was dupli
 - `history [--shell powershell|bash|zsh] [--file <history-path>] [--limit <n>]`
 - `parse <log-file> [--context-lines 2] [--max-matches 200] [--note "..."]`
 - `import <importer-name> [--file <path>] [--note "..."]`
+- `view-browser <browser-capture.json> [--output <file>] [--no-open]`
 - `replay [session-id] [--format shell|markdown] [--output <file>]`
 - `diff [--staged] [--commit <ref>] [--note "..."]`
 - `capture`
