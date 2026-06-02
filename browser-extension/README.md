@@ -50,6 +50,27 @@ In the extension popup:
 5. Add manual notes.
 6. Select **Export**.
 
+## Keyboard Shortcuts
+
+Default shortcuts:
+
+- `Alt+Shift+T`: start or stop browser capture
+- `Alt+Shift+S`: capture selected text
+- `Alt+Shift+P`: capture visible-tab screenshot
+- `Alt+Shift+N`: prompt for a manual note
+
+Additional commands are available without default bindings:
+
+- export capture JSON
+- clear capture state
+
+Customize shortcuts in Chrome or Edge:
+
+```text
+chrome://extensions/shortcuts
+edge://extensions/shortcuts
+```
+
 Import the downloaded JSON into Tracepad:
 
 ```bash

@@ -9,6 +9,12 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return true;
 });
 
+chrome.commands.onCommand.addListener((command) => {
+  handleCommand(command).catch((error) => {
+    recordShortcutError(command, error).catch(() => {});
+  });
+});
+
 chrome.webRequest.onBeforeRequest.addListener(
   (details) => {
     if (details.tabId >= 0) {
@@ -73,6 +79,38 @@ async function handleMessage(message, sender) {
   throw new Error(`Unknown message type: ${type}`);
 }
 
+async function handleCommand(command) {
+  if (command === "toggle-capture") {
+    const state = await getState();
+    if (state.recording) {
+      await updateState({ recording: false, stoppedAt: isoNow() });
+    } else {
+      await startCapture();
+    }
+    return;
+  }
+  if (command === "capture-selection") {
+    await captureSelection();
+    return;
+  }
+  if (command === "capture-screenshot") {
+    await captureScreenshot("Captured by keyboard shortcut");
+    return;
+  }
+  if (command === "add-note") {
+    await promptForNote();
+    return;
+  }
+  if (command === "export-capture") {
+    await exportCapture();
+    return;
+  }
+  if (command === "clear-capture") {
+    await chrome.storage.local.remove(STATE_KEY);
+    return;
+  }
+}
+
 async function startCapture() {
   const active = await getActiveTab();
   const context = active ? await getTabContext(active) : null;
@@ -114,6 +152,21 @@ async function addManualNote(note) {
   });
   await saveState(state);
   return state;
+}
+
+async function promptForNote() {
+  const active = await getActiveTab();
+  if (!active || typeof active.id !== "number" || !isInjectableUrl(active.url || "")) {
+    throw new Error("Cannot prompt for a note on this page.");
+  }
+  const results = await chrome.scripting.executeScript({
+    target: { tabId: active.id },
+    func: () => window.prompt("Tracepad note"),
+  });
+  const note = results && results[0] ? results[0].result : "";
+  if (note) {
+    await addManualNote(note);
+  }
 }
 
 async function captureSelection() {
@@ -217,6 +270,28 @@ async function recordNetworkEvent(details, message) {
     });
   }
   state.events.push(event);
+  await saveState(state);
+}
+
+async function recordShortcutError(command, error) {
+  const state = await getState();
+  if (!state.recording) {
+    return;
+  }
+  const active = await getActiveTab();
+  const context = active
+    ? {
+        title: active.title || "",
+        url: active.url || "",
+      }
+    : {};
+  state.events.push({
+    type: "note",
+    title: context.title || "",
+    url: context.url || "",
+    message: `Shortcut ${command} failed: ${error && error.message ? error.message : String(error)}`,
+    at: isoNow(),
+  });
   await saveState(state);
 }
 

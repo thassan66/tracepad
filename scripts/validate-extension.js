@@ -21,6 +21,14 @@ const requiredFiles = [
 ];
 
 const allowedPermissions = new Set(["activeTab", "downloads", "scripting", "storage", "tabs", "webRequest"]);
+const requiredCommands = new Set([
+  "toggle-capture",
+  "capture-selection",
+  "capture-screenshot",
+  "add-note",
+  "export-capture",
+  "clear-capture",
+]);
 
 function assert(condition, message) {
   if (!condition) {
@@ -40,6 +48,11 @@ assert(manifest.action && manifest.action.default_popup === "popup.html", "Missi
 
 for (const permission of manifest.permissions || []) {
   assert(allowedPermissions.has(permission), `Unexpected permission: ${permission}`);
+}
+
+for (const command of requiredCommands) {
+  assert(manifest.commands && manifest.commands[command], `Missing extension command: ${command}`);
+  assert(manifest.commands[command].description, `Missing description for extension command: ${command}`);
 }
 
 for (const script of ["content.js", "page-hook.js", "popup.js", "service_worker.js"]) {
