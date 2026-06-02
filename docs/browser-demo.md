@@ -33,5 +33,8 @@ open ./checkout-demo-postmortem.html
 - Browser evidence is generic and works across dashboards and internal tools.
 - HAR and extension exports both land in the same Tracepad session.
 - Browser extension shortcuts make capture usable during active debugging.
+- The visual report ranks priority evidence and shows handoff readiness.
+- The AI handoff prompt can be copied into any provider without Tracepad sending data anywhere.
+- Timeline search and signal filters make long sessions easier to review.
 - Secret-looking browser URL query values are redacted during import.
 - The final postmortem can be shared without requiring a Tracepad server.

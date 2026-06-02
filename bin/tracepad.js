@@ -1117,6 +1117,7 @@ function renderHtmlTemplate(session, template) {
   const body = [
     renderHtmlHero(session, titleMap[template]),
     renderHtmlMetrics(model),
+    renderHtmlReviewWorkbench(session, model),
     renderHtmlExecutivePanel(session, model),
     renderHtmlInsightPanel(model),
     renderHtmlBrowserBoard(model),
@@ -1193,6 +1194,22 @@ function renderHtmlTemplate(session, template) {
       letter-spacing: 0;
     }
     .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    .quick-nav {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+    .quick-nav a {
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      color: var(--muted);
+      font-size: 0.86rem;
+      padding: 6px 10px;
+      text-decoration: none;
+    }
+    .quick-nav a:hover { border-color: var(--blue); color: var(--blue); }
     button, .link-button {
       appearance: none;
       background: var(--surface);
@@ -1278,6 +1295,7 @@ function renderHtmlTemplate(session, template) {
     .section h2 { margin: 0; font-size: 1rem; letter-spacing: 0; }
     .section-subtitle { color: var(--muted); font-size: 0.88rem; margin: 3px 0 0; }
     .grid-2 { display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 14px; }
+    .workbench-grid { display: grid; grid-template-columns: 0.75fr 1.25fr 1fr; gap: 12px; }
     .browser-grid, .evidence-grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; }
     .insight-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 10px; }
     .browser-card, .evidence-card { padding: 14px; box-shadow: none; }
@@ -1290,6 +1308,65 @@ function renderHtmlTemplate(session, template) {
     .browser-card strong, .evidence-card strong, .insight-card strong { display: block; margin-bottom: 6px; }
     .browser-card p, .evidence-card p, .insight-card p { color: var(--muted); margin: 0; overflow-wrap: anywhere; }
     .insight-card ul { padding-left: 18px; }
+    .score-card {
+      background: #111827;
+      border-radius: 8px;
+      color: #fff;
+      padding: 16px;
+    }
+    .score-card strong {
+      display: block;
+      font-size: 2.8rem;
+      line-height: 1;
+      margin-bottom: 8px;
+    }
+    .score-card span { color: #bfdbfe; display: block; font-weight: 800; margin-bottom: 8px; }
+    .score-card p { color: #d6dde8; margin: 0; }
+    .review-card {
+      background: #fbfdff;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+    }
+    .review-card h3 {
+      font-size: 0.95rem;
+      margin: 0 0 8px;
+    }
+    .review-list {
+      list-style: none;
+      padding: 0;
+    }
+    .review-list li {
+      align-items: flex-start;
+      display: grid;
+      gap: 8px;
+      grid-template-columns: 18px minmax(0, 1fr);
+      margin-top: 8px;
+    }
+    .check-dot {
+      border-radius: 999px;
+      display: inline-block;
+      height: 10px;
+      margin-top: 6px;
+      width: 10px;
+    }
+    .check-dot.pass { background: var(--green); }
+    .check-dot.warn { background: var(--yellow); }
+    .check-dot.fail { background: var(--rose); }
+    .ai-prompt {
+      background: #0f172a;
+      border: 1px solid #1f2937;
+      border-radius: 8px;
+      color: #e5edf7;
+      font-family: Consolas, Menlo, monospace;
+      font-size: 0.82rem;
+      line-height: 1.45;
+      margin: 10px 0 0;
+      max-height: 260px;
+      overflow: auto;
+      padding: 12px;
+      white-space: pre-wrap;
+    }
     .empty-state {
       background: #f8fafc;
       border: 1px dashed var(--line-strong);
@@ -1322,6 +1399,21 @@ function renderHtmlTemplate(session, template) {
       flex-wrap: wrap;
       gap: 8px;
       margin-bottom: 12px;
+    }
+    .timeline-toolbar {
+      align-items: center;
+      display: flex;
+      gap: 10px;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+    .timeline-search {
+      border: 1px solid var(--line-strong);
+      border-radius: 6px;
+      color: var(--text);
+      font: inherit;
+      min-width: min(320px, 100%);
+      padding: 8px 10px;
     }
     .timeline-list {
       display: grid;
@@ -1465,16 +1557,17 @@ function renderHtmlTemplate(session, template) {
     .diff-hunk { background: var(--blue-bg); color: var(--blue); }
     .diff-meta { color: var(--muted); }
     @media print {
-      .topbar, .timeline-controls { display: none; }
+      .topbar, .quick-nav, .timeline-controls, .timeline-toolbar button, .timeline-search { display: none; }
       body { background: #fff; }
       .hero, .section, .metric, .timeline-card, .browser-card, .evidence-card { box-shadow: none; }
     }
     @media (max-width: 760px) {
-      .hero, .grid-2 { grid-template-columns: 1fr; }
+      .hero, .grid-2, .workbench-grid { grid-template-columns: 1fr; }
       .metrics, .browser-grid, .evidence-grid, .insight-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
       .hero h1 { font-size: 1.55rem; }
       .timeline-card { grid-template-columns: 1fr; }
       .timeline-card .time { border-right: 0; border-bottom: 1px solid var(--line); }
+      .timeline-toolbar { align-items: stretch; flex-direction: column; }
     }
     @media (max-width: 520px) {
       .metrics, .browser-grid, .evidence-grid, .insight-grid { grid-template-columns: 1fr; }
@@ -1491,6 +1584,13 @@ function renderHtmlTemplate(session, template) {
         <button type="button" onclick="copyLocation()">Copy link</button>
       </div>
     </div>
+    <nav class="quick-nav" aria-label="Report sections">
+      <a href="#review">Review</a>
+      <a href="#insights">Insights</a>
+      <a href="#browser">Browser</a>
+      <a href="#evidence">Evidence</a>
+      <a href="#timeline">Timeline</a>
+    </nav>
     ${body}
   </main>
   <div id="imageViewer" class="image-viewer" hidden>
@@ -1511,14 +1611,28 @@ function renderHtmlTemplate(session, template) {
   </div>
   <script>
     var imageZoom = 1;
+    var activeTimelineKind = "all";
     function filterTimeline(kind) {
+      activeTimelineKind = kind || "all";
       document.querySelectorAll("[data-filter]").forEach((button) => {
-        button.classList.toggle("active", button.dataset.filter === kind);
+        button.classList.toggle("active", button.dataset.filter === activeTimelineKind);
       });
+      applyTimelineFilters();
+    }
+    function applyTimelineFilters() {
+      var search = (document.getElementById("timelineSearch") || { value: "" }).value.toLowerCase().trim();
       document.querySelectorAll("[data-event-kind]").forEach((card) => {
         const kinds = (card.dataset.eventKinds || card.dataset.eventKind || "").split(" ");
-        card.hidden = kind !== "all" && !kinds.includes(kind);
+        var matchesKind = activeTimelineKind === "all" || kinds.includes(activeTimelineKind);
+        var matchesSearch = !search || (card.dataset.search || card.textContent || "").toLowerCase().includes(search);
+        card.hidden = !matchesKind || !matchesSearch;
       });
+    }
+    function copyTextById(id) {
+      var element = document.getElementById(id);
+      if (element && navigator.clipboard) {
+        navigator.clipboard.writeText(element.textContent || "");
+      }
     }
     function copyLocation() {
       if (navigator.clipboard) {
@@ -1595,6 +1709,158 @@ function renderHtmlMetrics(model) {
   </section>`;
 }
 
+function renderHtmlReviewWorkbench(session, model) {
+  const review = buildReviewModel(session, model);
+  const checklist = review.checklist.map((item) => `<li>
+    <span class="check-dot ${escapeHtml(item.state)}"></span>
+    <span><strong>${escapeHtml(item.label)}</strong><br><span class="muted">${escapeHtml(item.detail)}</span></span>
+  </li>`).join("");
+  const evidence = review.topEvidence.length > 0
+    ? review.topEvidence.map((item) => `<li>${escapeHtml(item)}</li>`).join("")
+    : `<li><span class="muted">No priority evidence yet. Add findings, failed commands, browser captures, or snapshots.</span></li>`;
+
+  return `<section class="section" id="review">
+    <div class="section-header">
+      <div>
+        <h2>Review Workbench</h2>
+        <p class="section-subtitle">A handoff-ready view of signal strength, missing context, priority evidence, and AI-ready summary text.</p>
+      </div>
+    </div>
+    <div class="workbench-grid">
+      <article class="score-card">
+        <strong>${escapeHtml(String(review.score))}</strong>
+        <span>${escapeHtml(review.scoreLabel)}</span>
+        <p>${escapeHtml(review.scoreDetail)}</p>
+      </article>
+      <article class="review-card">
+        <h3>Review Checklist</h3>
+        <ul class="review-list">${checklist}</ul>
+      </article>
+      <article class="review-card">
+        <h3>Priority Evidence</h3>
+        <ul>${evidence}</ul>
+      </article>
+    </div>
+    <div class="review-card" style="margin-top: 12px;">
+      <div class="section-header" style="margin-bottom: 0;">
+        <div>
+          <h3>AI Handoff Prompt</h3>
+          <p class="section-subtitle">Copy into any AI tool when you want a root-cause summary, comparison, hypotheses, and next checks. Tracepad does not send it anywhere.</p>
+        </div>
+        <button type="button" onclick="copyTextById('aiPrompt')">Copy prompt</button>
+      </div>
+      <pre class="ai-prompt" id="aiPrompt">${escapeHtml(review.aiPrompt)}</pre>
+    </div>
+  </section>`;
+}
+
+function buildReviewModel(session, model) {
+  const browserSignals = collectBrowserSignals(model);
+  const failedCommands = model.commands.filter((item) => item.exitCode !== null && item.exitCode !== undefined && item.exitCode !== 0);
+  const evidenceCount = model.snapshots.length + model.attachments.length;
+  const hasSummary = Boolean(String(session.summary || "").trim());
+  const hasFinding = model.byKind.finding.length + model.byKind.blocker.length > 0;
+  const hasHypothesis = model.byKind.hypothesis.length > 0;
+  const hasDecision = model.byKind.decision.length > 0;
+  const hasEvidence = evidenceCount > 0;
+  const hasBrowser = browserSignals.length > 0 || model.snapshots.some((item) => item.snapshotKind === "browser-capture-summary");
+  const score = Math.min(100,
+    (hasSummary ? 18 : 0) +
+    (hasFinding ? 22 : 0) +
+    (hasHypothesis ? 14 : 0) +
+    (hasDecision ? 14 : 0) +
+    (hasEvidence ? 18 : 0) +
+    (hasBrowser ? 14 : 0)
+  );
+  const scoreLabel = score >= 80 ? "Handoff ready" : score >= 55 ? "Useful, needs tightening" : "Capture more signal";
+  const scoreDetail = score >= 80
+    ? "This session has enough context for a reviewer to understand the investigation."
+    : score >= 55
+      ? "The report is useful, but a clearer summary, decision, or evidence snapshot would reduce back-and-forth."
+      : "Add findings, hypotheses, evidence, and a final summary before sharing.";
+
+  const checklist = [
+    {
+      label: "Final summary",
+      state: hasSummary ? "pass" : "warn",
+      detail: hasSummary ? "A closing summary is present." : "Run `tracepad stop \"summary\"` or export after adding a summary.",
+    },
+    {
+      label: "Confirmed findings",
+      state: hasFinding ? "pass" : "fail",
+      detail: hasFinding ? `${model.byKind.finding.length + model.byKind.blocker.length} high-signal finding(s) captured.` : "Add at least one finding or blocker.",
+    },
+    {
+      label: "Working hypothesis",
+      state: hasHypothesis ? "pass" : "warn",
+      detail: hasHypothesis ? `${model.byKind.hypothesis.length} hypothesis note(s) captured.` : "Add a hypothesis so reviewers know what you believe is happening.",
+    },
+    {
+      label: "Evidence attached",
+      state: hasEvidence ? "pass" : "warn",
+      detail: hasEvidence ? `${evidenceCount} snapshot/attachment artifact(s) captured.` : "Attach logs, screenshots, HAR imports, or git diff snapshots.",
+    },
+    {
+      label: "Share safety",
+      state: getExportRedactionMode(session) === "full" ? "pass" : "warn",
+      detail: getExportRedactionMode(session) === "full" ? "Full redaction is active for this export." : "Use `--redaction full` before sharing outside your trusted team.",
+    },
+  ];
+
+  const topEvidence = uniqueNonEmpty(
+    model.byKind.blocker.concat(model.byKind.finding).map((item) => item.text)
+      .concat(failedCommands.map((item) => `Failed command: ${item.command}${renderExitText(item)}`))
+      .concat(browserSignals.map((item) => item.text))
+      .concat(model.snapshots.slice(-3).map((item) => `${item.snapshotKind || "snapshot"}: ${item.note || item.storedPath || "captured"}`))
+  ).slice(0, 6);
+
+  return {
+    score,
+    scoreLabel,
+    scoreDetail,
+    checklist,
+    topEvidence,
+    aiPrompt: buildAiHandoffPrompt(session, model, topEvidence),
+  };
+}
+
+function buildAiHandoffPrompt(session, model, topEvidence) {
+  const lines = [];
+  const failedCommands = model.commands.filter((item) => item.exitCode !== null && item.exitCode !== undefined && item.exitCode !== 0);
+  lines.push("You are reviewing a local Tracepad debugging session. Produce a concise engineering handoff with: summary, timeline comparison, confirmed findings, hypotheses, likely root cause, missing evidence, and next checks.");
+  lines.push("");
+  lines.push(`Session: ${session.title}`);
+  lines.push(`Status: ${session.status}`);
+  lines.push(`Branch: ${session.branch || "unknown"}`);
+  lines.push(`Summary: ${session.summary || model.summaryFallback}`);
+  lines.push("");
+  lines.push("Priority evidence:");
+  appendNumberedPromptLines(lines, topEvidence.length > 0 ? topEvidence : ["No priority evidence captured yet."]);
+  lines.push("");
+  lines.push("Findings:");
+  appendNumberedPromptLines(lines, model.byKind.finding.concat(model.byKind.blocker).map((item) => item.text).slice(0, 8));
+  lines.push("");
+  lines.push("Hypotheses:");
+  appendNumberedPromptLines(lines, model.byKind.hypothesis.map((item) => item.text).slice(0, 8));
+  lines.push("");
+  lines.push("Decisions:");
+  appendNumberedPromptLines(lines, model.byKind.decision.map((item) => item.text).slice(0, 8));
+  lines.push("");
+  lines.push("Failed commands:");
+  appendNumberedPromptLines(lines, failedCommands.map((item) => `${item.command}${renderExitText(item)}${item.note ? ` - ${item.note}` : ""}`).slice(0, 8));
+  lines.push("");
+  lines.push("Evidence artifacts:");
+  appendNumberedPromptLines(lines, model.evidenceLines.slice(0, 10).map((item) => item.replace(/^- /, "")));
+  return lines.join("\n");
+}
+
+function appendNumberedPromptLines(lines, values) {
+  const items = values && values.length > 0 ? values : ["None captured."];
+  for (let index = 0; index < items.length; index += 1) {
+    lines.push(`${index + 1}. ${items[index]}`);
+  }
+}
+
 function renderHtmlSection(title, lines, emptyText) {
   const content = lines.length > 0 ? `<ul class="note-list">${lines.map((line) => `<li>${line}</li>`).join("")}</ul>` : `<p class="empty-state">${escapeHtml(emptyText || "No data.")}</p>`;
   return `<section class="section"><div class="section-header"><div><h2>${escapeHtml(title)}</h2></div></div>${content}</section>`;
@@ -1610,7 +1876,7 @@ function renderHtmlExecutivePanel(session, model) {
     ? decisions.map((item) => `<li class="${escapeHtml(item.kind)}">${renderHtmlNoteItem(item)}</li>`).join("")
     : `<li><span class="muted">No decisions or mitigations captured yet.</span></li>`;
 
-  return `<section class="section">
+  return `<section class="section" id="insights">
     <div class="section-header">
       <div>
         <h2>Investigation Brief</h2>
@@ -1721,14 +1987,18 @@ function buildSuggestedInsights(model) {
   };
 }
 
+function collectBrowserSignals(model) {
+  return model.byKind.finding
+    .concat(model.byKind.context)
+    .filter((item) => /browser|console|network|status \d{3}|selected:|http|grafana|argocd|openshift|kubernetes|ci\/cd|dashboard/i.test(item.text || ""));
+}
+
 function renderHtmlBrowserBoard(model) {
   const browserTabs = model.byKind.context
     .filter((item) => item.text && item.text.startsWith("Browser tab:"))
     .map((item) => parseBrowserTabNote(item.text));
   const hasBrowserSummary = model.snapshots.some((item) => item.snapshotKind === "browser-capture-summary");
-  const browserSignals = model.byKind.finding
-    .filter((item) => /browser|console|network|status \d{3}|selected:/i.test(item.text || ""))
-    .slice(0, 6);
+  const browserSignals = collectBrowserSignals(model).slice(0, 6);
 
   if (!hasBrowserSummary && browserTabs.length === 0 && browserSignals.length === 0) {
     return "";
@@ -1745,7 +2015,7 @@ function renderHtmlBrowserBoard(model) {
     ? `<ul class="note-list">${browserSignals.map((item) => `<li class="finding">${renderHtmlNoteItem(item)}</li>`).join("")}</ul>`
     : `<p class="empty-state">No console, selection, or failed network findings were captured.</p>`;
 
-  return `<section class="section">
+  return `<section class="section" id="browser">
     <div class="section-header">
       <div>
         <h2>Browser Evidence Board</h2>
@@ -1784,7 +2054,7 @@ function renderHtmlEvidenceGrid(session, model) {
     </article>`;
   }).join("");
 
-  return `<section class="section">
+  return `<section class="section" id="evidence">
     <div class="section-header">
       <div>
         <h2>Evidence</h2>
@@ -1843,7 +2113,8 @@ function renderHtmlTimelineCards(session) {
   const cards = events.map((event) => {
     const kind = classifyHtmlEventKind(event);
     const kinds = timelineEventKinds(event).join(" ");
-    return `<article class="timeline-card" data-event-kind="${escapeHtml(kind)}" data-event-kinds="${escapeHtml(kinds)}">
+    const searchText = renderTimelineSearchText(event);
+    return `<article class="timeline-card" data-event-kind="${escapeHtml(kind)}" data-event-kinds="${escapeHtml(kinds)}" data-search="${escapeHtml(searchText)}">
       <div class="time">${escapeHtml(formatElapsedTime(session.createdAt, event.at))}<br><span>${escapeHtml(formatDisplayTime(event.at))}</span></div>
       <div class="content">
         <div class="event-title">
@@ -1855,16 +2126,33 @@ function renderHtmlTimelineCards(session) {
     </article>`;
   }).join("");
 
-  return `<section class="section">
+  return `<section class="section" id="timeline">
     <div class="section-header">
       <div>
         <h2>Timeline</h2>
         <p class="section-subtitle">Filter the session by signal type while reviewing the handoff.</p>
       </div>
     </div>
-    <div class="timeline-controls">${buttons}</div>
+    <div class="timeline-toolbar">
+      <div class="timeline-controls">${buttons}</div>
+      <input id="timelineSearch" class="timeline-search" type="search" placeholder="Search timeline" oninput="applyTimelineFilters()" />
+    </div>
     <div class="timeline-list">${cards}</div>
   </section>`;
+}
+
+function renderTimelineSearchText(event) {
+  return [
+    event.type,
+    event.kind,
+    event.text,
+    event.command,
+    event.note,
+    event.snapshotKind,
+    event.storedPath,
+    event.originalPath,
+    event.state,
+  ].filter(Boolean).join(" ");
 }
 
 function renderHtmlNoteItem(item) {

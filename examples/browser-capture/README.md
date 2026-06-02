@@ -41,11 +41,14 @@ The sample token-like query value is intentionally fake and should be redacted b
 
 The browser capture JSON fixture is intentionally not meant to be read directly. `tracepad view-browser` turns it into a visual report with:
 
+- a review workbench with handoff readiness score
+- priority evidence ranking
+- an AI handoff prompt for copy/paste review
 - an investigation brief
 - browser evidence cards
 - captured tabs and URLs
 - visible page/log/detail snapshots when Page capture is used
 - console and failed network signals
-- filterable timeline events
+- filterable and searchable timeline events
 - clickable screenshot previews with open and zoom controls
 - stored evidence under `.tracepad/artifacts`
