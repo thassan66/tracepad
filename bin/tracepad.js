@@ -1109,6 +1109,7 @@ function renderHtmlTemplate(session, template) {
     renderHtmlHero(session, titleMap[template]),
     renderHtmlMetrics(model),
     renderHtmlExecutivePanel(session, model),
+    renderHtmlInsightPanel(model),
     renderHtmlBrowserBoard(model),
     renderHtmlEvidenceGrid(session, model),
     renderHtmlSection("Findings", model.byKind.finding.map((item) => renderHtmlNoteItem(item)), "No findings captured yet."),
@@ -1158,6 +1159,7 @@ function renderHtmlTemplate(session, template) {
       color: var(--text);
       line-height: 1.5;
     }
+    [hidden] { display: none !important; }
     .shell {
       width: min(1180px, calc(100vw - 28px));
       margin: 0 auto;
@@ -1268,9 +1270,17 @@ function renderHtmlTemplate(session, template) {
     .section-subtitle { color: var(--muted); font-size: 0.88rem; margin: 3px 0 0; }
     .grid-2 { display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 14px; }
     .browser-grid, .evidence-grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; }
+    .insight-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 10px; }
     .browser-card, .evidence-card { padding: 14px; box-shadow: none; }
-    .browser-card strong, .evidence-card strong { display: block; margin-bottom: 6px; }
-    .browser-card p, .evidence-card p { color: var(--muted); margin: 0; overflow-wrap: anywhere; }
+    .insight-card {
+      background: #fbfdff;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+    }
+    .browser-card strong, .evidence-card strong, .insight-card strong { display: block; margin-bottom: 6px; }
+    .browser-card p, .evidence-card p, .insight-card p { color: var(--muted); margin: 0; overflow-wrap: anywhere; }
+    .insight-card ul { padding-left: 18px; }
     .empty-state {
       background: #f8fafc;
       border: 1px dashed var(--line-strong);
@@ -1396,13 +1406,13 @@ function renderHtmlTemplate(session, template) {
     }
     @media (max-width: 760px) {
       .hero, .grid-2 { grid-template-columns: 1fr; }
-      .metrics, .browser-grid, .evidence-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
+      .metrics, .browser-grid, .evidence-grid, .insight-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
       .hero h1 { font-size: 1.55rem; }
       .timeline-card { grid-template-columns: 1fr; }
       .timeline-card .time { border-right: 0; border-bottom: 1px solid var(--line); }
     }
     @media (max-width: 520px) {
-      .metrics, .browser-grid, .evidence-grid { grid-template-columns: 1fr; }
+      .metrics, .browser-grid, .evidence-grid, .insight-grid { grid-template-columns: 1fr; }
       .topbar { align-items: flex-start; flex-direction: column; }
     }
   </style>
@@ -1424,7 +1434,8 @@ function renderHtmlTemplate(session, template) {
         button.classList.toggle("active", button.dataset.filter === kind);
       });
       document.querySelectorAll("[data-event-kind]").forEach((card) => {
-        card.hidden = kind !== "all" && card.dataset.eventKind !== kind;
+        const kinds = (card.dataset.eventKinds || card.dataset.eventKind || "").split(" ");
+        card.hidden = kind !== "all" && !kinds.includes(kind);
       });
     }
     function copyLocation() {
@@ -1502,6 +1513,97 @@ function renderHtmlExecutivePanel(session, model) {
       </div>
     </div>
   </section>`;
+}
+
+function renderHtmlInsightPanel(model) {
+  const insights = buildSuggestedInsights(model);
+  const cards = [
+    { title: "Comparison", items: insights.comparison, className: "context" },
+    { title: "Findings", items: insights.findings, className: "finding" },
+    { title: "Hypotheses", items: insights.hypotheses, className: "hypothesis" },
+    { title: "Next Checks", items: insights.nextChecks, className: "decision" },
+  ];
+
+  return `<section class="section">
+    <div class="section-header">
+      <div>
+        <h2>Suggested Insights</h2>
+        <p class="section-subtitle">Local history-based suggestions for comparison, findings, hypotheses, and next checks. No data leaves this machine.</p>
+      </div>
+    </div>
+    <div class="insight-grid">
+      ${cards.map((card) => `<article class="insight-card">
+        <span class="badge ${escapeHtml(card.className)}">${escapeHtml(card.title)}</span>
+        <ul>${card.items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+      </article>`).join("")}
+    </div>
+  </section>`;
+}
+
+function buildSuggestedInsights(model) {
+  const findings = model.byKind.blocker.concat(model.byKind.finding).map((item) => item.text);
+  const hypotheses = model.byKind.hypothesis.map((item) => item.text);
+  const decisions = model.byKind.decision.map((item) => item.text);
+  const browserSignals = findings.filter((text) => /browser|console|network|status \d{3}|selected:|http/i.test(text));
+  const failedCommands = model.commands.filter((item) => item.exitCode !== null && item.exitCode !== undefined && item.exitCode !== 0);
+  const browserTabs = model.byKind.context.filter((item) => item.text && item.text.startsWith("Browser tab:"));
+  const evidenceCount = model.snapshots.length + model.attachments.length;
+
+  const comparison = [
+    `${browserSignals.length} browser signal(s), ${failedCommands.length} failed command(s), and ${evidenceCount} evidence artifact(s) were captured.`,
+  ];
+  if (browserTabs.length > 0) {
+    comparison.push(`${browserTabs.length} browser context tab(s) connect the timeline to dashboard or app state.`);
+  }
+  if (model.snapshots.length > 0) {
+    comparison.push(`${model.snapshots.length} snapshot(s) can be compared against findings to explain what changed.`);
+  }
+
+  const suggestedFindings = uniqueNonEmpty(findings).slice(0, 4);
+  if (suggestedFindings.length === 0 && failedCommands.length > 0) {
+    suggestedFindings.push(`${failedCommands.length} command(s) exited non-zero and need review.`);
+  }
+  if (suggestedFindings.length === 0 && browserSignals.length > 0) {
+    suggestedFindings.push("Browser capture contains failed network or console signals.");
+  }
+  if (suggestedFindings.length === 0) {
+    suggestedFindings.push("No explicit findings yet. Add findings as soon as a signal is confirmed.");
+  }
+
+  const suggestedHypotheses = uniqueNonEmpty(hypotheses).slice(0, 4);
+  if (suggestedHypotheses.length === 0 && browserSignals.length > 0 && browserTabs.length > 0) {
+    suggestedHypotheses.push("Correlate the failed browser signal with the captured dashboard or app tab state.");
+  }
+  if (suggestedHypotheses.length === 0 && failedCommands.length > 0) {
+    suggestedHypotheses.push("The failing command output may identify the narrowest reproduction path.");
+  }
+  if (suggestedHypotheses.length === 0) {
+    suggestedHypotheses.push("No hypothesis captured yet. Add one before closing the session.");
+  }
+
+  const nextChecks = [];
+  if (decisions.length > 0) {
+    nextChecks.push(`Verify the latest decision: ${decisions[decisions.length - 1]}`);
+  }
+  if (browserSignals.length > 0) {
+    nextChecks.push("Re-run the failing browser path after the suspected fix and capture the new status.");
+  }
+  if (failedCommands.length > 0) {
+    nextChecks.push("Re-run failed commands and record pass/fail outcomes before handoff.");
+  }
+  if (model.snapshots.length === 0) {
+    nextChecks.push("Capture a git diff snapshot so reviewers can compare evidence with code changes.");
+  }
+  if (nextChecks.length === 0) {
+    nextChecks.push("Add a final summary with `tracepad stop \"...\"` before sharing.");
+  }
+
+  return {
+    comparison: comparison.slice(0, 4),
+    findings: suggestedFindings.slice(0, 4),
+    hypotheses: suggestedHypotheses.slice(0, 4),
+    nextChecks: uniqueNonEmpty(nextChecks).slice(0, 4),
+  };
 }
 
 function renderHtmlBrowserBoard(model) {
@@ -1615,11 +1717,12 @@ function renderHtmlTimelineCards(session) {
     return renderHtmlSection("Timeline", [], "No timeline captured yet.");
   }
 
-  const filters = ["all", ...Array.from(new Set(events.map((event) => classifyHtmlEventKind(event))))];
-  const buttons = filters.map((filter) => `<button type="button" data-filter="${escapeHtml(filter)}" class="${filter === "all" ? "active" : ""}" onclick="filterTimeline('${escapeHtml(filter)}')">${escapeHtml(formatEventKindLabel(filter))}</button>`).join("");
+  const filters = buildTimelineFilters(events);
+  const buttons = filters.map((filter) => `<button type="button" data-filter="${escapeHtml(filter.kind)}" class="${filter.kind === "all" ? "active" : ""}" onclick="filterTimeline('${escapeHtml(filter.kind)}')">${escapeHtml(formatEventKindLabel(filter.kind))} <span class="muted">${escapeHtml(String(filter.count))}</span></button>`).join("");
   const cards = events.map((event) => {
     const kind = classifyHtmlEventKind(event);
-    return `<article class="timeline-card" data-event-kind="${escapeHtml(kind)}">
+    const kinds = timelineEventKinds(event).join(" ");
+    return `<article class="timeline-card" data-event-kind="${escapeHtml(kind)}" data-event-kinds="${escapeHtml(kinds)}">
       <div class="time">${escapeHtml(formatElapsedTime(session.createdAt, event.at))}<br><span>${escapeHtml(formatDisplayTime(event.at))}</span></div>
       <div class="content">
         <div class="event-title">
@@ -1687,6 +1790,43 @@ function classifyHtmlEventKind(event) {
   return event.type || "event";
 }
 
+function buildTimelineFilters(events) {
+  const counts = { all: events.length };
+  for (const event of events) {
+    for (const kind of timelineEventKinds(event)) {
+      counts[kind] = (counts[kind] || 0) + 1;
+    }
+  }
+
+  const order = ["all", "finding", "hypothesis", "context", "browser", "command", "failed", "evidence", "snapshot", "attachment", "decision", "blocker", "status"];
+  const ordered = order.filter((kind) => counts[kind] > 0).map((kind) => ({ kind, count: counts[kind] }));
+  const extras = Object.keys(counts)
+    .filter((kind) => !order.includes(kind) && counts[kind] > 0)
+    .sort()
+    .map((kind) => ({ kind, count: counts[kind] }));
+  return ordered.concat(extras);
+}
+
+function timelineEventKinds(event) {
+  const kinds = new Set([classifyHtmlEventKind(event)]);
+  if (event.type === "snapshot" || event.type === "attachment") {
+    kinds.add("evidence");
+  }
+  if (event.type === "command") {
+    kinds.add("command");
+    if (event.exitCode !== null && event.exitCode !== undefined && event.exitCode !== 0) {
+      kinds.add("failed");
+    }
+  }
+  if (event.type === "note" && /browser|console|network|status \d{3}|selected:|http|grafana|argocd|openshift|kubernetes/i.test(event.text || "")) {
+    kinds.add("browser");
+  }
+  if (event.type === "status") {
+    kinds.add("status");
+  }
+  return Array.from(kinds).filter(Boolean);
+}
+
 function formatEventKindLabel(kind) {
   return String(kind || "event").replace(/-/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
@@ -1698,6 +1838,20 @@ function parseBrowserTabNote(text) {
     title: parts[0] || "(untitled)",
     url: parts.slice(1).join(" | "),
   };
+}
+
+function uniqueNonEmpty(values) {
+  const seen = new Set();
+  const output = [];
+  for (const value of values) {
+    const text = String(value || "").trim();
+    if (!text || seen.has(text)) {
+      continue;
+    }
+    seen.add(text);
+    output.push(text);
+  }
+  return output;
 }
 
 function renderHtmlDiffSnapshots(session, model) {

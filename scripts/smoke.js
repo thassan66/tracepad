@@ -110,7 +110,10 @@ try {
   assert(fs.existsSync(previewPath), "view-browser did not create an HTML preview");
   const previewHtml = fs.readFileSync(previewPath, "utf8");
   assert(previewHtml.includes("Browser Evidence Board"), "view-browser preview did not render browser evidence board");
+  assert(previewHtml.includes("Suggested Insights"), "view-browser preview did not render suggested insights");
   assert(previewHtml.includes("timeline-controls"), "view-browser preview did not render timeline filters");
+  assert(previewHtml.includes("[hidden] { display: none !important; }"), "timeline hidden state can be overridden by card display CSS");
+  assert(previewHtml.includes('data-event-kinds="'), "timeline cards did not render filter categories");
 
   const exportPath = path.join(tempRoot, "handoff.md");
   run(["export", "--repo", tempRoot, "--template", "handoff", "--output", exportPath]);

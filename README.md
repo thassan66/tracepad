@@ -126,6 +126,7 @@ HTML reports are static files. They can be opened locally or attached to a hando
 The current report includes:
 
 - investigation brief
+- suggested insights generated from captured history
 - metric cards
 - browser evidence board
 - captured tabs and URLs
@@ -134,6 +135,8 @@ The current report includes:
 - filterable timeline
 - inline git diff viewer
 - image artifact previews
+
+Suggested insights are local heuristics today. They compare browser signals, failed commands, captured evidence, findings, hypotheses, and decisions without sending data to an AI service. The section is designed so an opt-in AI provider can be added later.
 
 Generate one manually:
 
