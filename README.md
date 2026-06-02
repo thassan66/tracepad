@@ -75,6 +75,8 @@ node ./bin/tracepad.js stop --repo /path/to/repo "Root cause was duplicate refre
 
 `stop` closes the session and writes an HTML handoff under `.tracepad/exports/`.
 
+The normal CLI output is designed for quick review too: `start`, `status`, `list`, `stop`, and `view-browser` render compact terminal panels with session metrics, recent timeline entries, next actions, and report paths.
+
 ## Core workflow
 
 Start a session:
