@@ -1140,21 +1140,18 @@ function renderHtmlTemplate(session, template) {
   const body = [
     renderHtmlHero(session, titleMap[template]),
     renderHtmlMetrics(model),
-    renderHtmlSection("Summary", [escapeHtml(session.summary || model.summaryFallback)]),
-    renderHtmlSection("Findings", model.byKind.finding.map((item) => escapeHtml(item.text)), "No findings captured yet."),
-    renderHtmlSection("Hypotheses", model.byKind.hypothesis.map((item) => escapeHtml(item.text)), "No hypotheses captured yet."),
+    renderHtmlExecutivePanel(session, model),
+    renderHtmlBrowserBoard(model),
+    renderHtmlEvidenceGrid(session, model),
+    renderHtmlSection("Findings", model.byKind.finding.map((item) => renderHtmlNoteItem(item)), "No findings captured yet."),
+    renderHtmlSection("Hypotheses", model.byKind.hypothesis.map((item) => renderHtmlNoteItem(item)), "No hypotheses captured yet."),
     renderHtmlSection(
       "Commands",
-      model.commands.map((item) => `<code>${escapeHtml(item.command)}</code>${escapeHtml(renderExitText(item))}${item.note ? ` <span class="muted">- ${escapeHtml(item.note)}</span>` : ""}`),
+      model.commands.map((item) => renderHtmlCommandItem(item)),
       "No commands captured yet."
     ),
-    renderHtmlSection(
-      "Snapshots",
-      model.snapshots.map((item) => `${escapeHtml(item.snapshotKind)} - <code>${escapeHtml(item.storedPath)}</code>${item.note ? ` <span class="muted">- ${escapeHtml(item.note)}</span>` : ""}`),
-      "No snapshots captured yet."
-    ),
     renderHtmlDiffSnapshots(session, model),
-    renderHtmlSection("Timeline", model.timelineLines.map((line) => escapeHtml(line)), "No timeline captured yet."),
+    renderHtmlTimelineCards(session),
   ].join("\n");
 
   return `<!DOCTYPE html>
@@ -1165,75 +1162,236 @@ function renderHtmlTemplate(session, template) {
   <title>${escapeHtml(session.title)} - ${TOOL_NAME}</title>
   <style>
     :root {
-      color-scheme: dark;
-      --bg: #0b1015;
-      --panel: #121b24;
-      --line: #293648;
-      --text: #ebf1f7;
-      --muted: #95a5b8;
-      --cyan: #56d6ff;
-      --green: #62d394;
-      --yellow: #ffcf70;
-      --rose: #ff8798;
-      --red-bg: rgba(255, 135, 152, 0.12);
-      --green-bg: rgba(98, 211, 148, 0.12);
-      --blue-bg: rgba(86, 214, 255, 0.10);
+      color-scheme: light;
+      --bg: #f4f6f8;
+      --surface: #ffffff;
+      --surface-strong: #111827;
+      --panel: #ffffff;
+      --line: #d8dde5;
+      --line-strong: #b9c1cc;
+      --text: #17202a;
+      --muted: #687385;
+      --blue: #246bfe;
+      --green: #16835f;
+      --yellow: #a96800;
+      --rose: #bd2f4b;
+      --ink: #111827;
+      --red-bg: #fff0f2;
+      --green-bg: #ecf8f3;
+      --blue-bg: #edf4ff;
+      --yellow-bg: #fff7e6;
+      --shadow: 0 18px 42px rgba(17, 24, 39, 0.10);
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
       font-family: Inter, Segoe UI, Arial, sans-serif;
-      background:
-        radial-gradient(circle at top left, rgba(86, 214, 255, 0.12), transparent 20%),
-        radial-gradient(circle at top right, rgba(98, 211, 148, 0.10), transparent 18%),
-        var(--bg);
+      background: linear-gradient(180deg, #f8fafc 0%, var(--bg) 320px);
       color: var(--text);
       line-height: 1.5;
     }
     .shell {
-      width: min(1100px, calc(100vw - 32px));
+      width: min(1180px, calc(100vw - 28px));
       margin: 0 auto;
-      padding: 24px 0 40px;
+      padding: 18px 0 44px;
     }
-    .hero, .section, .metric {
-      background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.01));
+    .hero, .section, .metric, .evidence-card, .timeline-card, .browser-card {
+      background: var(--surface);
       border: 1px solid var(--line);
-      border-radius: 10px;
-      box-shadow: 0 18px 38px rgba(0,0,0,0.22);
+      border-radius: 8px;
+      box-shadow: 0 1px 2px rgba(17, 24, 39, 0.04);
     }
-    .hero { padding: 22px; margin-bottom: 18px; }
-    .hero h1 { margin: 0 0 8px; font-size: 2rem; }
-    .eyebrow { margin: 0 0 10px; color: var(--cyan); text-transform: uppercase; font-size: 0.8rem; letter-spacing: 0.08em; }
-    .meta { display: flex; gap: 16px; flex-wrap: wrap; color: var(--muted); }
-    .metrics { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 14px; margin-bottom: 18px; }
-    .metric { padding: 16px; }
-    .metric strong { display: block; font-size: 1.5rem; }
-    .metric span { color: var(--muted); font-size: 0.85rem; }
-    .section { padding: 18px; margin-bottom: 16px; }
-    .section h2 { margin: 0 0 12px; font-size: 1rem; }
+    .topbar {
+      align-items: center;
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 12px;
+      gap: 12px;
+    }
+    .brand {
+      color: var(--ink);
+      font-weight: 800;
+      letter-spacing: 0;
+    }
+    .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+    button, .link-button {
+      appearance: none;
+      background: var(--surface);
+      border: 1px solid var(--line-strong);
+      border-radius: 6px;
+      color: var(--text);
+      cursor: pointer;
+      font: inherit;
+      font-size: 0.9rem;
+      padding: 8px 10px;
+      text-decoration: none;
+    }
+    button:hover, .link-button:hover { border-color: var(--blue); color: var(--blue); }
+    button.active {
+      background: var(--ink);
+      border-color: var(--ink);
+      color: #fff;
+    }
+    .hero {
+      background: var(--surface-strong);
+      border-color: #0f172a;
+      color: #fff;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 20px;
+      margin-bottom: 14px;
+      padding: 24px;
+      box-shadow: var(--shadow);
+    }
+    .hero h1 { margin: 0 0 10px; font-size: clamp(1.45rem, 2.4vw, 2.35rem); line-height: 1.08; }
+    .eyebrow { margin: 0 0 10px; color: #93c5fd; text-transform: uppercase; font-size: 0.78rem; font-weight: 800; letter-spacing: 0.08em; }
+    .summary-text { color: #d6dde8; max-width: 72ch; margin: 0; }
+    .meta { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+    .pill {
+      align-items: center;
+      background: rgba(255,255,255,0.09);
+      border: 1px solid rgba(255,255,255,0.14);
+      border-radius: 999px;
+      color: #e6edf7;
+      display: inline-flex;
+      font-size: 0.82rem;
+      gap: 6px;
+      padding: 5px 9px;
+      white-space: nowrap;
+    }
+    .hero-status {
+      align-self: start;
+      background: #fff;
+      border-radius: 8px;
+      color: var(--ink);
+      min-width: 180px;
+      padding: 14px;
+    }
+    .hero-status strong { display: block; font-size: 1.6rem; line-height: 1; }
+    .hero-status span { color: var(--muted); font-size: 0.82rem; }
+    .metrics { display: grid; grid-template-columns: repeat(5, minmax(0,1fr)); gap: 10px; margin-bottom: 14px; }
+    .metric { min-height: 92px; padding: 14px; position: relative; }
+    .metric strong { display: block; font-size: 1.65rem; line-height: 1.1; }
+    .metric span { color: var(--muted); font-size: 0.82rem; }
+    .metric small { color: var(--muted); display: block; margin-top: 7px; }
+    .metric::before {
+      background: var(--blue);
+      border-radius: 999px;
+      content: "";
+      height: 4px;
+      left: 14px;
+      position: absolute;
+      right: 14px;
+      top: 0;
+    }
+    .metric.findings::before { background: var(--rose); }
+    .metric.commands::before { background: var(--blue); }
+    .metric.evidence::before { background: var(--green); }
+    .metric.failures::before { background: var(--yellow); }
+    .section { padding: 18px; margin-bottom: 14px; }
+    .section-header {
+      align-items: center;
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .section h2 { margin: 0; font-size: 1rem; letter-spacing: 0; }
+    .section-subtitle { color: var(--muted); font-size: 0.88rem; margin: 3px 0 0; }
+    .grid-2 { display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 14px; }
+    .browser-grid, .evidence-grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; }
+    .browser-card, .evidence-card { padding: 14px; box-shadow: none; }
+    .browser-card strong, .evidence-card strong { display: block; margin-bottom: 6px; }
+    .browser-card p, .evidence-card p { color: var(--muted); margin: 0; overflow-wrap: anywhere; }
+    .empty-state {
+      background: #f8fafc;
+      border: 1px dashed var(--line-strong);
+      border-radius: 8px;
+      color: var(--muted);
+      padding: 16px;
+    }
     ul { margin: 0; padding-left: 20px; }
     li + li { margin-top: 8px; }
+    .note-list { list-style: none; padding-left: 0; }
+    .note-list li {
+      border-left: 3px solid var(--blue);
+      padding: 8px 0 8px 10px;
+    }
+    .note-list li.finding { border-color: var(--rose); }
+    .note-list li.hypothesis { border-color: var(--yellow); }
+    .note-list li.decision { border-color: var(--green); }
+    .note-meta { color: var(--muted); display: block; font-size: 0.78rem; margin-bottom: 2px; }
     code {
-      background: rgba(255,255,255,0.06);
-      border: 1px solid rgba(255,255,255,0.10);
+      background: #f1f5f9;
+      border: 1px solid #dbe3ee;
       border-radius: 6px;
       padding: 2px 6px;
       font-family: Consolas, Menlo, monospace;
       font-size: 0.92em;
     }
     .muted { color: var(--muted); }
+    .timeline-controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .timeline-list {
+      display: grid;
+      gap: 10px;
+    }
+    .timeline-card {
+      box-shadow: none;
+      display: grid;
+      grid-template-columns: 118px minmax(0, 1fr);
+      overflow: hidden;
+    }
+    .timeline-card .time {
+      background: #f8fafc;
+      border-right: 1px solid var(--line);
+      color: var(--muted);
+      font-family: Consolas, Menlo, monospace;
+      font-size: 0.78rem;
+      padding: 12px;
+    }
+    .timeline-card .content { padding: 12px; }
+    .event-title { align-items: center; display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 4px; }
+    .badge {
+      border-radius: 999px;
+      display: inline-flex;
+      font-size: 0.72rem;
+      font-weight: 800;
+      letter-spacing: 0.03em;
+      padding: 3px 8px;
+      text-transform: uppercase;
+    }
+    .badge.finding, .badge.blocker, .badge.failed { background: var(--red-bg); color: var(--rose); }
+    .badge.context, .badge.snapshot, .badge.attachment { background: var(--blue-bg); color: var(--blue); }
+    .badge.decision, .badge.pass { background: var(--green-bg); color: var(--green); }
+    .badge.hypothesis, .badge.command { background: var(--yellow-bg); color: var(--yellow); }
+    .event-text { margin: 0; overflow-wrap: anywhere; }
+    .artifact-image {
+      background: #f8fafc;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      display: block;
+      margin-top: 10px;
+      max-height: 260px;
+      max-width: 100%;
+      object-fit: contain;
+    }
     details.diff-file {
       border: 1px solid var(--line);
       border-radius: 8px;
       overflow: hidden;
       margin-top: 12px;
-      background: rgba(0,0,0,0.18);
+      background: #fbfdff;
     }
     details.diff-file summary {
       cursor: pointer;
       padding: 10px 12px;
       color: var(--text);
-      background: rgba(255,255,255,0.04);
+      background: #f8fafc;
     }
     .diff-view {
       margin: 0;
@@ -1246,14 +1404,14 @@ function renderHtmlTemplate(session, template) {
       display: grid;
       grid-template-columns: 64px minmax(0, 1fr);
       min-width: 720px;
-      border-top: 1px solid rgba(255,255,255,0.04);
+      border-top: 1px solid #edf1f6;
     }
     .diff-line .ln {
       color: var(--muted);
       padding: 2px 10px;
       text-align: right;
       user-select: none;
-      background: rgba(0,0,0,0.14);
+      background: #f8fafc;
     }
     .diff-line .code {
       white-space: pre;
@@ -1261,50 +1419,317 @@ function renderHtmlTemplate(session, template) {
     }
     .diff-add { background: var(--green-bg); }
     .diff-del { background: var(--red-bg); }
-    .diff-hunk { background: var(--blue-bg); color: var(--cyan); }
+    .diff-hunk { background: var(--blue-bg); color: var(--blue); }
     .diff-meta { color: var(--muted); }
+    @media print {
+      .topbar, .timeline-controls { display: none; }
+      body { background: #fff; }
+      .hero, .section, .metric, .timeline-card, .browser-card, .evidence-card { box-shadow: none; }
+    }
     @media (max-width: 760px) {
-      .metrics { grid-template-columns: repeat(2, minmax(0,1fr)); }
+      .hero, .grid-2 { grid-template-columns: 1fr; }
+      .metrics, .browser-grid, .evidence-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
       .hero h1 { font-size: 1.55rem; }
+      .timeline-card { grid-template-columns: 1fr; }
+      .timeline-card .time { border-right: 0; border-bottom: 1px solid var(--line); }
+    }
+    @media (max-width: 520px) {
+      .metrics, .browser-grid, .evidence-grid { grid-template-columns: 1fr; }
+      .topbar { align-items: flex-start; flex-direction: column; }
     }
   </style>
 </head>
 <body>
   <main class="shell">
+    <div class="topbar">
+      <div class="brand">Tracepad Report</div>
+      <div class="actions">
+        <button type="button" onclick="window.print()">Print</button>
+        <button type="button" onclick="copyLocation()">Copy link</button>
+      </div>
+    </div>
     ${body}
   </main>
+  <script>
+    function filterTimeline(kind) {
+      document.querySelectorAll("[data-filter]").forEach((button) => {
+        button.classList.toggle("active", button.dataset.filter === kind);
+      });
+      document.querySelectorAll("[data-event-kind]").forEach((card) => {
+        card.hidden = kind !== "all" && card.dataset.eventKind !== kind;
+      });
+    }
+    function copyLocation() {
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(window.location.href);
+      }
+    }
+  </script>
 </body>
 </html>`;
 }
 
 function renderHtmlHero(session, label) {
   return `<section class="hero">
-    <p class="eyebrow">${escapeHtml(label)}</p>
-    <h1>${escapeHtml(session.title)}</h1>
-    <div class="meta">
-      <span>Session ${escapeHtml(session.id)}</span>
-      <span>Status: ${escapeHtml(session.status)}</span>
-      <span>Branch: ${escapeHtml(session.branch || "unknown")}</span>
-      <span>Updated: ${escapeHtml(session.updatedAt)}</span>
+    <div>
+      <p class="eyebrow">${escapeHtml(label)}</p>
+      <h1>${escapeHtml(session.title)}</h1>
+      <p class="summary-text">${escapeHtml(session.summary || summarizeForDisplay(session))}</p>
+      <div class="meta">
+        <span class="pill">Session ${escapeHtml(session.id)}</span>
+        <span class="pill">Branch ${escapeHtml(session.branch || "unknown")}</span>
+        <span class="pill">Updated ${escapeHtml(formatDisplayTime(session.updatedAt))}</span>
+      </div>
+    </div>
+    <div class="hero-status">
+      <strong>${escapeHtml(session.status)}</strong>
+      <span>Report status</span>
     </div>
   </section>`;
 }
 
 function renderHtmlMetrics(model) {
   const metrics = [
-    { value: model.summary.noteCount, label: "Notes" },
-    { value: model.summary.commandCount, label: "Commands" },
-    { value: model.summary.snapshotCount, label: "Snapshots" },
-    { value: model.summary.failingCommandCount, label: "Failing Commands" },
+    { value: model.byKind.finding.length, label: "Findings", className: "findings", hint: "Signals that need attention" },
+    { value: model.summary.commandCount, label: "Commands", className: "commands", hint: "Terminal activity captured" },
+    { value: model.summary.snapshotCount + model.summary.attachmentCount, label: "Evidence", className: "evidence", hint: "Snapshots and attachments" },
+    { value: model.summary.failingCommandCount, label: "Failed Commands", className: "failures", hint: "Non-zero exits" },
+    { value: model.byKind.context.length, label: "Context Notes", className: "context", hint: "Browser tabs and background" },
   ];
   return `<section class="metrics">
-    ${metrics.map((item) => `<article class="metric"><strong>${escapeHtml(String(item.value))}</strong><span>${escapeHtml(item.label)}</span></article>`).join("")}
+    ${metrics.map((item) => `<article class="metric ${escapeHtml(item.className)}"><strong>${escapeHtml(String(item.value))}</strong><span>${escapeHtml(item.label)}</span><small>${escapeHtml(item.hint)}</small></article>`).join("")}
   </section>`;
 }
 
 function renderHtmlSection(title, lines, emptyText) {
-  const content = lines.length > 0 ? `<ul>${lines.map((line) => `<li>${line}</li>`).join("")}</ul>` : `<p class="muted">${escapeHtml(emptyText || "No data.")}</p>`;
-  return `<section class="section"><h2>${escapeHtml(title)}</h2>${content}</section>`;
+  const content = lines.length > 0 ? `<ul class="note-list">${lines.map((line) => `<li>${line}</li>`).join("")}</ul>` : `<p class="empty-state">${escapeHtml(emptyText || "No data.")}</p>`;
+  return `<section class="section"><div class="section-header"><div><h2>${escapeHtml(title)}</h2></div></div>${content}</section>`;
+}
+
+function renderHtmlExecutivePanel(session, model) {
+  const topSignals = model.byKind.blocker.concat(model.byKind.finding).slice(0, 5);
+  const decisions = model.byKind.decision.slice(-4);
+  const signalItems = topSignals.length > 0
+    ? topSignals.map((item) => `<li class="${escapeHtml(item.kind)}">${renderHtmlNoteItem(item)}</li>`).join("")
+    : `<li><span class="muted">No high-signal findings captured yet.</span></li>`;
+  const decisionItems = decisions.length > 0
+    ? decisions.map((item) => `<li class="${escapeHtml(item.kind)}">${renderHtmlNoteItem(item)}</li>`).join("")
+    : `<li><span class="muted">No decisions or mitigations captured yet.</span></li>`;
+
+  return `<section class="section">
+    <div class="section-header">
+      <div>
+        <h2>Investigation Brief</h2>
+        <p class="section-subtitle">The fastest read for reviewers joining the debug session.</p>
+      </div>
+    </div>
+    <div class="grid-2">
+      <div>
+        <h3 class="eyebrow" style="color: var(--rose); margin-bottom: 8px;">Top Signals</h3>
+        <ul class="note-list">${signalItems}</ul>
+      </div>
+      <div>
+        <h3 class="eyebrow" style="color: var(--green); margin-bottom: 8px;">Decisions</h3>
+        <ul class="note-list">${decisionItems}</ul>
+      </div>
+    </div>
+  </section>`;
+}
+
+function renderHtmlBrowserBoard(model) {
+  const browserTabs = model.byKind.context
+    .filter((item) => item.text && item.text.startsWith("Browser tab:"))
+    .map((item) => parseBrowserTabNote(item.text));
+  const hasBrowserSummary = model.snapshots.some((item) => item.snapshotKind === "browser-capture-summary");
+  const browserSignals = model.byKind.finding
+    .filter((item) => /browser|console|network|status \d{3}|selected:/i.test(item.text || ""))
+    .slice(0, 6);
+
+  if (!hasBrowserSummary && browserTabs.length === 0 && browserSignals.length === 0) {
+    return "";
+  }
+
+  const tabCards = browserTabs.length > 0
+    ? browserTabs.slice(0, 6).map((tab) => `<article class="browser-card">
+        <strong>${escapeHtml(tab.title)}</strong>
+        <p>${escapeHtml(tab.url || "No URL captured")}</p>
+      </article>`).join("")
+    : `<div class="empty-state">No browser tabs were captured in this session.</div>`;
+
+  const signalList = browserSignals.length > 0
+    ? `<ul class="note-list">${browserSignals.map((item) => `<li class="finding">${renderHtmlNoteItem(item)}</li>`).join("")}</ul>`
+    : `<p class="empty-state">No console, selection, or failed network findings were captured.</p>`;
+
+  return `<section class="section">
+    <div class="section-header">
+      <div>
+        <h2>Browser Evidence Board</h2>
+        <p class="section-subtitle">Tabs, dashboard context, console errors, failed requests, and selected text in one place.</p>
+      </div>
+    </div>
+    <div class="grid-2">
+      <div>
+        <h3 class="eyebrow" style="color: var(--blue); margin-bottom: 8px;">Captured Tabs</h3>
+        <div class="browser-grid">${tabCards}</div>
+      </div>
+      <div>
+        <h3 class="eyebrow" style="color: var(--rose); margin-bottom: 8px;">Browser Signals</h3>
+        ${signalList}
+      </div>
+    </div>
+  </section>`;
+}
+
+function renderHtmlEvidenceGrid(session, model) {
+  const evidence = model.snapshots.concat(model.attachments);
+  if (evidence.length === 0) {
+    return renderHtmlSection("Evidence", [], "No snapshots or attachments captured yet.");
+  }
+
+  const cards = evidence.map((item) => {
+    const isAttachment = item.type === "attachment";
+    const label = isAttachment ? "attachment" : item.snapshotKind || "snapshot";
+    const pathText = item.storedPath || item.originalPath || "unknown";
+    const preview = renderHtmlArtifactPreview(session, item);
+    return `<article class="evidence-card">
+      <span class="badge ${isAttachment ? "attachment" : "snapshot"}">${escapeHtml(label)}</span>
+      <strong>${escapeHtml(item.note || label)}</strong>
+      <p><code>${escapeHtml(pathText)}</code></p>
+      ${preview}
+    </article>`;
+  }).join("");
+
+  return `<section class="section">
+    <div class="section-header">
+      <div>
+        <h2>Evidence</h2>
+        <p class="section-subtitle">Artifacts copied into Tracepad for review and handoff.</p>
+      </div>
+    </div>
+    <div class="evidence-grid">${cards}</div>
+  </section>`;
+}
+
+function renderHtmlArtifactPreview(session, item) {
+  if (!item.storedPath || !/\.(png|jpe?g|webp|gif)$/i.test(item.storedPath)) {
+    return "";
+  }
+  const artifactPath = path.resolve(session.repoRoot || process.cwd(), item.storedPath);
+  const dataUrl = readImageAsDataUrl(artifactPath, 1200000);
+  if (!dataUrl) {
+    return "";
+  }
+  return `<img class="artifact-image" alt="${escapeHtml(item.note || "Tracepad artifact")}" src="${escapeHtml(dataUrl)}" />`;
+}
+
+function readImageAsDataUrl(filePath, maxBytes) {
+  if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
+    return "";
+  }
+  const stat = fs.statSync(filePath);
+  if (stat.size > maxBytes) {
+    return "";
+  }
+  const extension = path.extname(filePath).toLowerCase();
+  const mime = extension === ".jpg" || extension === ".jpeg"
+    ? "image/jpeg"
+    : extension === ".webp"
+      ? "image/webp"
+      : extension === ".gif"
+        ? "image/gif"
+        : "image/png";
+  return `data:${mime};base64,${fs.readFileSync(filePath).toString("base64")}`;
+}
+
+function renderHtmlTimelineCards(session) {
+  const events = Array.isArray(session.events) ? session.events : [];
+  if (events.length === 0) {
+    return renderHtmlSection("Timeline", [], "No timeline captured yet.");
+  }
+
+  const filters = ["all", ...Array.from(new Set(events.map((event) => classifyHtmlEventKind(event))))];
+  const buttons = filters.map((filter) => `<button type="button" data-filter="${escapeHtml(filter)}" class="${filter === "all" ? "active" : ""}" onclick="filterTimeline('${escapeHtml(filter)}')">${escapeHtml(formatEventKindLabel(filter))}</button>`).join("");
+  const cards = events.map((event) => {
+    const kind = classifyHtmlEventKind(event);
+    return `<article class="timeline-card" data-event-kind="${escapeHtml(kind)}">
+      <div class="time">${escapeHtml(formatElapsedTime(session.createdAt, event.at))}<br><span>${escapeHtml(formatDisplayTime(event.at))}</span></div>
+      <div class="content">
+        <div class="event-title">
+          <span class="badge ${escapeHtml(kind)}">${escapeHtml(formatEventKindLabel(kind))}</span>
+          <span class="muted">${escapeHtml(event.type || "event")}</span>
+        </div>
+        <p class="event-text">${renderHtmlEventBody(event)}</p>
+      </div>
+    </article>`;
+  }).join("");
+
+  return `<section class="section">
+    <div class="section-header">
+      <div>
+        <h2>Timeline</h2>
+        <p class="section-subtitle">Filter the session by signal type while reviewing the handoff.</p>
+      </div>
+    </div>
+    <div class="timeline-controls">${buttons}</div>
+    <div class="timeline-list">${cards}</div>
+  </section>`;
+}
+
+function renderHtmlNoteItem(item) {
+  return `<span class="note-meta">${escapeHtml(formatDisplayTime(item.at))} - ${escapeHtml(item.kind || "note")}</span>${escapeHtml(item.text || "")}`;
+}
+
+function renderHtmlCommandItem(item) {
+  const status = item.exitCode === null || item.exitCode === undefined ? "unknown" : item.exitCode === 0 ? "pass" : "failed";
+  return `<span class="badge ${escapeHtml(status)}">${escapeHtml(status)}</span> <code>${escapeHtml(item.command)}</code>${escapeHtml(renderExitText(item))}${item.note ? ` <span class="muted">- ${escapeHtml(item.note)}</span>` : ""}`;
+}
+
+function renderHtmlEventBody(event) {
+  if (event.type === "note") {
+    return escapeHtml(event.text || "");
+  }
+  if (event.type === "command") {
+    return `${renderHtmlCommandItem(event)}`;
+  }
+  if (event.type === "attachment") {
+    return `${event.note ? `${escapeHtml(event.note)} ` : ""}<code>${escapeHtml(event.storedPath || event.originalPath || "")}</code>`;
+  }
+  if (event.type === "snapshot") {
+    return `${escapeHtml(event.snapshotKind || "snapshot")} <code>${escapeHtml(event.storedPath || "")}</code>${event.note ? ` <span class="muted">- ${escapeHtml(event.note)}</span>` : ""}`;
+  }
+  if (event.type === "status") {
+    return `${escapeHtml(event.state || "unknown")}${event.note ? ` <span class="muted">- ${escapeHtml(event.note)}</span>` : ""}`;
+  }
+  return escapeHtml(renderEventLine(event, event.at));
+}
+
+function classifyHtmlEventKind(event) {
+  if (event.type === "command") {
+    return event.exitCode !== null && event.exitCode !== undefined && event.exitCode !== 0 ? "failed" : "command";
+  }
+  if (event.type === "note") {
+    return event.kind || "note";
+  }
+  if (event.type === "snapshot") {
+    return "snapshot";
+  }
+  if (event.type === "attachment") {
+    return "attachment";
+  }
+  return event.type || "event";
+}
+
+function formatEventKindLabel(kind) {
+  return String(kind || "event").replace(/-/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function parseBrowserTabNote(text) {
+  const raw = String(text || "").replace(/^Browser tab:\s*/i, "");
+  const parts = raw.split(" | ");
+  return {
+    title: parts[0] || "(untitled)",
+    url: parts.slice(1).join(" | "),
+  };
 }
 
 function renderHtmlDiffSnapshots(session, model) {
@@ -2224,6 +2649,20 @@ function formatElapsedTime(startIso, endIso) {
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
   return `+${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+}
+
+function formatDisplayTime(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return String(value || "unknown");
+  }
+  return date.toLocaleString("en", {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 function escapeHtml(value) {

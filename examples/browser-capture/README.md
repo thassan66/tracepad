@@ -29,4 +29,11 @@ The demo models a common investigation path:
 
 The sample token-like query value is intentionally fake and should be redacted by Tracepad on import.
 
-The browser capture JSON fixture is intentionally not meant to be read directly. Import it into a Tracepad session, then generate an HTML or Markdown report.
+The browser capture JSON fixture is intentionally not meant to be read directly. `tracepad view-browser` turns it into a visual report with:
+
+- an investigation brief
+- browser evidence cards
+- captured tabs and URLs
+- console and failed network signals
+- filterable timeline events
+- stored evidence under `.tracepad/artifacts`
