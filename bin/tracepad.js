@@ -13,6 +13,7 @@ const EXPORT_TEMPLATES = new Set(["handoff", "issue", "pr", "postmortem", "slack
 const EXPORT_FORMATS = new Set(["markdown", "html", "json"]);
 const REDACTION_MODES = new Set(["normal", "full"]);
 const REPLAY_FORMATS = new Set(["shell", "markdown"]);
+const SHARE_FORMATS = new Set(["all", "pr", "jira", "slack", "ai", "checklist"]);
 const EXPORT_REDACTION_MODE = Symbol("tracepadExportRedactionMode");
 const ANSI = {
   reset: "\x1b[0m",
@@ -82,6 +83,9 @@ async function main() {
       return;
     case "review":
       handleReview(repoRoot, args, flags);
+      return;
+    case "share":
+      handleShare(repoRoot, args, flags);
       return;
     case "import":
       await handlePluginImport(repoRoot, args, flags);
@@ -616,6 +620,27 @@ function handleReview(repoRoot, args, flags) {
   }
 
   process.stdout.write(`${renderCliPanel("Tracepad Review Dashboard", lines)}\n`);
+}
+
+function handleShare(repoRoot, args, flags) {
+  ensureStore(repoRoot);
+  const positional = firstArg(args).toLowerCase();
+  const positionalIsFormat = SHARE_FORMATS.has(positional);
+  const session = resolveReviewSession(repoRoot, positionalIsFormat ? [] : args, flags);
+  const redaction = normalizeRedactionMode(flags.redaction || (flags["full-redaction"] ? "full" : "normal"));
+  const format = normalizeShareFormat(flags.format || (positionalIsFormat ? positional : "all"));
+  const exportSession = prepareSessionForExport(session, redaction);
+  const output = renderShareOutput(exportSession, format);
+  const outputPath = flags.output ? path.resolve(String(flags.output)) : null;
+
+  if (!outputPath) {
+    process.stdout.write(`${output}\n`);
+    return;
+  }
+
+  fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+  fs.writeFileSync(outputPath, `${output}\n`, "utf8");
+  process.stdout.write(`Shared ${format} handoff for ${session.id} to ${outputPath} (redaction: ${redaction})\n`);
 }
 
 async function handlePluginImport(repoRoot, args, flags) {
@@ -1376,6 +1401,7 @@ function renderHtmlTemplate(session, template) {
     renderHtmlHero(session, titleMap[template]),
     renderHtmlMetrics(model),
     renderHtmlReviewWorkbench(session, model),
+    renderHtmlShareCards(session, model),
     renderHtmlExecutivePanel(session, model),
     renderHtmlInsightPanel(model),
     renderHtmlBrowserBoard(model),
@@ -1554,6 +1580,7 @@ function renderHtmlTemplate(session, template) {
     .section-subtitle { color: var(--muted); font-size: 0.88rem; margin: 3px 0 0; }
     .grid-2 { display: grid; grid-template-columns: 1.05fr 0.95fr; gap: 14px; }
     .workbench-grid { display: grid; grid-template-columns: 0.75fr 1.25fr 1fr; gap: 12px; }
+    .share-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
     .browser-grid, .evidence-grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 10px; }
     .insight-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 10px; }
     .browser-card, .evidence-card { padding: 14px; box-shadow: none; }
@@ -1623,6 +1650,29 @@ function renderHtmlTemplate(session, template) {
       max-height: 260px;
       overflow: auto;
       padding: 12px;
+      white-space: pre-wrap;
+    }
+    .share-card {
+      background: #ffffff;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      display: grid;
+      gap: 8px;
+      padding: 12px;
+    }
+    .share-card strong { display: block; font-size: 0.92rem; }
+    .share-card p { color: var(--muted); font-size: 0.82rem; margin: 0; }
+    .share-snippet {
+      background: #f8fafc;
+      border: 1px solid #e1e8f0;
+      border-radius: 6px;
+      color: #334155;
+      font-family: Consolas, Menlo, monospace;
+      font-size: 0.72rem;
+      line-height: 1.4;
+      max-height: 92px;
+      overflow: hidden;
+      padding: 8px;
       white-space: pre-wrap;
     }
     .empty-state {
@@ -1821,14 +1871,14 @@ function renderHtmlTemplate(session, template) {
     }
     @media (max-width: 760px) {
       .hero, .grid-2, .workbench-grid { grid-template-columns: 1fr; }
-      .metrics, .browser-grid, .evidence-grid, .insight-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
+      .metrics, .browser-grid, .evidence-grid, .insight-grid, .share-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
       .hero h1 { font-size: 1.55rem; }
       .timeline-card { grid-template-columns: 1fr; }
       .timeline-card .time { border-right: 0; border-bottom: 1px solid var(--line); }
       .timeline-toolbar { align-items: stretch; flex-direction: column; }
     }
     @media (max-width: 520px) {
-      .metrics, .browser-grid, .evidence-grid, .insight-grid { grid-template-columns: 1fr; }
+      .metrics, .browser-grid, .evidence-grid, .insight-grid, .share-grid { grid-template-columns: 1fr; }
       .topbar { align-items: flex-start; flex-direction: column; }
     }
   </style>
@@ -1844,6 +1894,7 @@ function renderHtmlTemplate(session, template) {
     </div>
     <nav class="quick-nav" aria-label="Report sections">
       <a href="#review">Review</a>
+      <a href="#share">Share</a>
       <a href="#insights">Insights</a>
       <a href="#browser">Browser</a>
       <a href="#evidence">Evidence</a>
@@ -2012,6 +2063,39 @@ function renderHtmlReviewWorkbench(session, model) {
   </section>`;
 }
 
+function renderHtmlShareCards(session, model) {
+  const payloads = buildSharePayloads(session, model);
+  const cards = [
+    { key: "pr", title: "PR Summary", description: "Paste into a pull request or review thread." },
+    { key: "jira", title: "Jira Issue", description: "Use for issue trackers and bug reports." },
+    { key: "slack", title: "Slack Update", description: "Post a concise team status update." },
+    { key: "ai", title: "AI Prompt", description: "Ask any AI provider for root-cause synthesis." },
+    { key: "checklist", title: "Reviewer Checklist", description: "Give reviewers the remaining checks." },
+  ];
+
+  return `<section class="section" id="share">
+    <div class="section-header">
+      <div>
+        <h2>Share Pack</h2>
+        <p class="section-subtitle">Copy-ready handoff text for PRs, issues, Slack, AI review, and reviewer checklists.</p>
+      </div>
+    </div>
+    <div class="share-grid">
+      ${cards.map((card) => {
+        const id = `share-${card.key}`;
+        return `<article class="share-card">
+          <div>
+            <strong>${escapeHtml(card.title)}</strong>
+            <p>${escapeHtml(card.description)}</p>
+          </div>
+          <button type="button" onclick="copyTextById('${escapeHtml(id)}')">Copy</button>
+          <pre class="share-snippet" id="${escapeHtml(id)}">${escapeHtml(payloads[card.key])}</pre>
+        </article>`;
+      }).join("")}
+    </div>
+  </section>`;
+}
+
 function buildReviewModel(session, model) {
   const browserSignals = collectBrowserSignals(model);
   const failedCommands = model.commands.filter((item) => item.exitCode !== null && item.exitCode !== undefined && item.exitCode !== 0);
@@ -2117,6 +2201,115 @@ function appendNumberedPromptLines(lines, values) {
   for (let index = 0; index < items.length; index += 1) {
     lines.push(`${index + 1}. ${items[index]}`);
   }
+}
+
+function buildSharePayloads(session, model) {
+  const review = buildReviewModel(session, model);
+  const findings = model.byKind.finding.concat(model.byKind.blocker).map((item) => item.text);
+  const hypotheses = model.byKind.hypothesis.map((item) => item.text);
+  const decisions = model.byKind.decision.map((item) => item.text);
+  const failedCommands = model.commands.filter((item) => item.exitCode !== null && item.exitCode !== undefined && item.exitCode !== 0);
+  const evidence = review.topEvidence.length > 0
+    ? review.topEvidence
+    : model.evidenceLines.map((item) => item.replace(/^- /, ""));
+  const summary = session.summary || model.summaryFallback;
+  const latestDecision = decisions.slice(-1)[0] || "No decision captured yet.";
+
+  const prLines = [
+    "## Summary",
+    summary,
+    "",
+    "## Debug Evidence",
+    ...formatBulletLines(evidence.slice(0, 6), "No priority evidence captured."),
+    "",
+    "## Findings",
+    ...formatBulletLines(findings.slice(0, 6), "No findings captured."),
+    "",
+    "## Verification",
+    ...formatBulletLines(model.commands.slice(-6).map((item) => `${item.command}${renderExitText(item)}`), "No verification commands captured."),
+    "",
+    "## Risk / Follow-up",
+    ...formatBulletLines(hypotheses.slice(0, 4), "No open hypotheses captured."),
+  ];
+
+  const jiraLines = [
+    `Summary: ${session.title}`,
+    "",
+    `Current status: ${session.status}`,
+    `Branch: ${session.branch || "unknown"}`,
+    "",
+    "Observed behavior:",
+    ...formatBulletLines(findings.slice(0, 6), "No observed behavior captured."),
+    "",
+    "Suspected cause:",
+    ...formatBulletLines(hypotheses.slice(0, 4), "No suspected cause captured."),
+    "",
+    "Evidence:",
+    ...formatBulletLines(evidence.slice(0, 6), "No evidence captured."),
+    "",
+    "Next action:",
+    `- ${latestDecision}`,
+  ];
+
+  const slackLines = [
+    `*Tracepad update:* ${session.title}`,
+    `Status: ${session.status} | Handoff score: ${review.score}/100 (${review.scoreLabel})`,
+    `Summary: ${summary}`,
+    "",
+    "*Top evidence:*",
+    ...formatBulletLines(evidence.slice(0, 3), "No priority evidence captured."),
+    "",
+    "*Next check:*",
+    `- ${review.checklist.find((item) => item.state !== "pass")?.detail || latestDecision}`,
+  ];
+
+  const checklistLines = [
+    `# Reviewer Checklist: ${session.title}`,
+    "",
+    ...review.checklist.map((item) => `- [${item.state === "pass" ? "x" : " "}] ${item.label}: ${item.detail}`),
+    "",
+    "Priority evidence:",
+    ...formatBulletLines(evidence.slice(0, 6), "No priority evidence captured."),
+  ];
+
+  return {
+    pr: prLines.join("\n").trimEnd(),
+    jira: jiraLines.join("\n").trimEnd(),
+    slack: slackLines.join("\n").trimEnd(),
+    ai: review.aiPrompt,
+    checklist: checklistLines.join("\n").trimEnd(),
+  };
+}
+
+function renderShareOutput(session, format) {
+  const model = buildSessionModel(session);
+  const payloads = buildSharePayloads(session, model);
+  if (format !== "all") {
+    return payloads[format];
+  }
+
+  const lines = [];
+  for (const item of [
+    ["PR Summary", payloads.pr],
+    ["Jira Issue", payloads.jira],
+    ["Slack Update", payloads.slack],
+    ["AI Prompt", payloads.ai],
+    ["Reviewer Checklist", payloads.checklist],
+  ]) {
+    lines.push(`## ${item[0]}`);
+    lines.push("");
+    lines.push(item[1]);
+    lines.push("");
+  }
+  return lines.join("\n").trimEnd();
+}
+
+function formatBulletLines(values, emptyText) {
+  const items = values.map((item) => String(item || "").trim()).filter(Boolean);
+  if (items.length === 0) {
+    return [`- ${emptyText}`];
+  }
+  return items.map((item) => `- ${item}`);
 }
 
 function renderHtmlSection(title, lines, emptyText) {
@@ -3666,6 +3859,14 @@ function normalizeReplayFormat(value) {
   return format;
 }
 
+function normalizeShareFormat(value) {
+  const format = String(value || "all").trim().toLowerCase();
+  if (!SHARE_FORMATS.has(format)) {
+    fail(`Invalid share format: ${value}. Use all, pr, jira, slack, ai, or checklist.`);
+  }
+  return format;
+}
+
 function ask(rl, prompt) {
   return new Promise((resolve) => {
     rl.question(prompt, resolve);
@@ -4110,6 +4311,9 @@ Commands:
   review [session-id] [--output <file>] [--redaction normal|full] [--no-open]
       Generate and open the latest visual review dashboard. Defaults to the active or latest session.
 
+  share [session-id|all|pr|jira|slack|ai|checklist] [--format all|pr|jira|slack|ai|checklist] [--redaction normal|full] [--output <file>]
+      Print or write copy-ready handoff text for PRs, issues, Slack, AI prompts, and reviewer checklists.
+
   import <importer-name> [--file <path>] [--note "why this matters"]
       Run an importer plugin from src/plugins/importers or .tracepad/plugins/importers.
 
@@ -4149,6 +4353,8 @@ Examples:
   tracepad parse ./logs/server.log --note "Trimmed fatal error excerpt"
   tracepad replay --format markdown
   tracepad review
+  tracepad share --format pr
+  tracepad share slack
   tracepad import plain-log --file ./logs/server.log --note "Failure excerpt"
   tracepad import browser-har --file ./debug.har --note "Browser network failures"
   tracepad import browser-capture --file ./browser-capture.json --note "Dashboard/browser investigation"

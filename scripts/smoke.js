@@ -134,6 +134,10 @@ try {
   assert(fs.existsSync(previewPath), "view-browser did not create an HTML preview");
   const previewHtml = fs.readFileSync(previewPath, "utf8");
   assert(previewHtml.includes("Review Workbench"), "view-browser preview did not render the review workbench");
+  assert(previewHtml.includes("Share Pack"), "view-browser preview did not render share pack");
+  assert(previewHtml.includes("PR Summary"), "view-browser preview did not render PR share card");
+  assert(previewHtml.includes("Jira Issue"), "view-browser preview did not render Jira share card");
+  assert(previewHtml.includes("Slack Update"), "view-browser preview did not render Slack share card");
   assert(previewHtml.includes("AI Handoff Prompt"), "view-browser preview did not render the AI handoff prompt");
   assert(previewHtml.includes("Priority Evidence"), "view-browser preview did not render priority evidence");
   assert(previewHtml.includes("Search timeline"), "view-browser preview did not render timeline search");
@@ -181,8 +185,20 @@ try {
   assert(fs.existsSync(reviewPath), "review did not create an HTML dashboard");
   const reviewHtml = fs.readFileSync(reviewPath, "utf8");
   assert(reviewHtml.includes("Review Workbench"), "review dashboard did not include the review workbench");
+  assert(reviewHtml.includes("Share Pack"), "review dashboard did not include the share pack");
   assert(reviewHtml.includes("AI Handoff Prompt"), "review dashboard did not include the AI handoff prompt");
   assert(reviewHtml.includes("Search timeline"), "review dashboard did not include timeline search");
+
+  const prShare = run(["share", "--repo", tempRoot, "--format", "pr"]);
+  assert(prShare.includes("## Summary"), "PR share output did not include summary section");
+  assert(prShare.includes("## Debug Evidence"), "PR share output did not include evidence section");
+  const slackShare = run(["share", "slack", "--repo", tempRoot]);
+  assert(slackShare.includes("*Tracepad update:*"), "Slack share output did not include Slack update heading");
+  const aiSharePath = path.join(tempRoot, "ai-share.md");
+  const aiShareOutput = run(["share", "--repo", tempRoot, "--format", "ai", "--redaction", "full", "--output", aiSharePath]);
+  assert(aiShareOutput.includes("Shared ai handoff"), "AI share output did not confirm file write");
+  assert(fs.existsSync(aiSharePath), "AI share output file was not created");
+  assert(fs.readFileSync(aiSharePath, "utf8").includes("You are reviewing a local Tracepad debugging session"), "AI share file did not include the handoff prompt");
 
   const recordPath = path.join(tempRoot, "record-review.html");
   const recordOutput = run([
