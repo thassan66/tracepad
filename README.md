@@ -1,65 +1,69 @@
 # Tracepad
 
-Tracepad is a local-first debugging flight recorder.
+Tracepad is a local-first debugging recorder for developers.
 
-It captures the parts of an investigation that usually vanish:
+It turns messy investigations across terminals, browser tabs, dashboards, CI/CD pages, Kubernetes consoles, and app UIs into a readable timeline you can review, export, and share.
 
+No hosted service. No account. No daemon. Everything stays in the repo under `.tracepad`.
+
+## Why Developers Use It
+
+Debugging usually leaves important context scattered across:
+
+- terminal scrollback
 - shell history
-- commands you ran
-- findings, hypotheses, and decisions
-- git status and diff snapshots
-- copied logs and evidence
-- a replayable timeline you can export as a handoff, PR brief, issue, or postmortem
+- copied stack traces
+- browser console errors
+- failed network requests
+- Grafana, OpenShift, ArgoCD, Kubernetes, and CI/CD screens
+- git diffs and half-finished notes
 
-Everything stays in the repo under `.tracepad`. No server. No daemon. No dependencies.
+Tracepad captures that work while you debug and turns it into:
 
-The adoption goal is simple: Tracepad should fit into the terminal, git, and review tools developers already use.
+- a compact CLI summary
+- a local terminal dashboard
+- a visual HTML investigation report
+- replayable command history
+- exportable handoff, issue, PR, Slack, or postmortem drafts
 
-## Why it exists
+## Best Fit
 
-Most debugging work is still a mix of shell scrollback, half-written notes, pasted stack traces, and vague memory. That creates:
+Tracepad is useful for:
 
-- weak handoffs
-- slow review cycles
-- repeated investigations
-- missing incident timelines
-- poor reproduction notes
+- backend and frontend engineers preserving reproduction steps
+- DevOps and platform engineers triaging incidents across dashboards
+- open-source maintainers turning bug reports into structured evidence
+- reviewers who need to understand how a fix was found
+- teams that want local-first debugging records without sending data to a SaaS backend
 
-Tracepad turns that into structured session data.
+## Quick Start
 
-![Tracepad terminal demo](docs/demo/tracepad-hero.gif)
-
-## Quick start
-
-Install from npm after the package is published:
-
-```bash
-npm install -g tracepad
-tracepad --help
-```
-
-Install directly from GitHub before the npm release:
+Install directly from GitHub:
 
 ```bash
 npm install -g github:thassan66/tracepad
 tracepad --help
 ```
 
-From the `tracepad` folder:
+Or run from this repo:
 
 ```bash
-node ./bin/tracepad.js init --repo /path/to/repo --shell
-node ./bin/tracepad.js start "Auth refresh bug" --repo /path/to/repo
+node ./bin/tracepad.js --help
 ```
 
-That flow will:
+Initialize Tracepad in any repo:
 
-- create `.tracepad`
-- install passive terminal capture into your shell profile
-- start a debugging session
-- record future terminal commands automatically after you reload your shell profile or open a new terminal
+```bash
+tracepad init --shell
+```
 
-Then debug normally:
+Start a session:
+
+```bash
+tracepad start "Checkout API latency"
+```
+
+Debug normally:
 
 ```bash
 npm test
@@ -67,129 +71,154 @@ git diff
 curl http://localhost:3000/health
 ```
 
+Add important findings:
+
+```bash
+tracepad note "HTTP 503 reproduced from checkout status endpoint" --kind finding
+tracepad note "Deployment and latency spike started at the same time" --kind hypothesis
+```
+
+Check the session:
+
+```bash
+tracepad status
+```
+
 Stop and export a visual report:
 
 ```bash
-node ./bin/tracepad.js stop --repo /path/to/repo "Root cause was duplicate refresh under warm cache"
+tracepad stop "Root cause was a stale payment-status dependency"
 ```
 
-`stop` closes the session and writes an HTML handoff under `.tracepad/exports/`.
+`start`, `status`, `list`, `stop`, and `view-browser` render compact terminal panels with session metrics, recent timeline entries, next actions, and report paths.
 
-The normal CLI output is designed for quick review too: `start`, `status`, `list`, `stop`, and `view-browser` render compact terminal panels with session metrics, recent timeline entries, next actions, and report paths.
+## Browser Capture
 
-## Core workflow
+Tracepad can import browser debugging evidence without deep API integrations.
 
-Start a session:
+Phase 1 supports generic browser capture data:
+
+- tab title and URL
+- screenshots
+- console errors
+- failed network requests
+- HTTP 4xx/5xx events
+- selected text
+- manual notes
+- dashboard and app context
+
+That means it works with browser-based tools like Grafana, OpenShift, ArgoCD, Kubernetes dashboards, CI/CD pages, internal admin portals, and app UIs.
+
+Preview a browser extension JSON export in one command:
 
 ```bash
-node ./bin/tracepad.js start "NPE after token refresh" --repo /path/to/repo
+tracepad view-browser ./browser-capture.json
 ```
 
-After `tracepad init --shell`, Tracepad passively records normal terminal commands while a session is active. A standalone CLI cannot record commands after it exits unless this shell integration has been installed.
+That creates a Tracepad session, imports the browser evidence, generates an HTML report, and opens it.
 
-Add notes:
+A no-build browser extension MVP is available in [browser-extension](browser-extension/README.md). Demo fixtures are available in [examples/browser-capture](examples/browser-capture/README.md).
+
+## Visual Reports
+
+HTML reports are static files. They can be opened locally or attached to a handoff without running a Tracepad server.
+
+The current report includes:
+
+- investigation brief
+- metric cards
+- browser evidence board
+- captured tabs and URLs
+- console and network signals
+- stored evidence cards
+- filterable timeline
+- inline git diff viewer
+- image artifact previews
+
+Generate one manually:
 
 ```bash
-node ./bin/tracepad.js note "Fails only when cache is warm" --repo /path/to/repo --kind finding
-node ./bin/tracepad.js note "Token refresh race in adapter" --repo /path/to/repo --kind hypothesis
-node ./bin/tracepad.js note "Guard refresh with single-flight" --repo /path/to/repo --kind decision
+tracepad export --format html --template postmortem --output ./incident.html
+open ./incident.html
 ```
 
-Record a command:
+## Terminal Dashboard
+
+Open a local terminal dashboard:
 
 ```bash
-node ./bin/tracepad.js cmd "mvn test -Dtest=AuthFlowTest" --repo /path/to/repo --exit-code 1 --note "Refresh path still fails"
-node ./bin/tracepad.js cmd "npm test" --repo /path/to/repo --source passive-shell --exit-code 1
+tracepad tui
 ```
 
-Install passive shell capture:
+Hotkeys:
+
+- `q`: quit
+- `r`: refresh
+- `e`: export HTML
+- `d`: capture git diff
+- `n`: add quick note
+- `[ ]`: select timeline event
+- `j k`: scroll preview
+
+## Core Commands
+
+Session flow:
 
 ```bash
-node ./bin/tracepad.js init --shell
-node ./bin/tracepad.js alias setup --shell bash
-node ./bin/tracepad.js alias setup --shell zsh
-node ./bin/tracepad.js alias setup --shell powershell --install
+tracepad init --shell
+tracepad start "Auth refresh bug"
+tracepad note "Fails only when cache is warm" --kind finding
+tracepad status
+tracepad stop "Root cause was duplicate refresh under warm cache"
 ```
 
-The shell integration records terminal commands into the active Tracepad session after each prompt. It only runs inside repos with `.tracepad/state.json`, skips Tracepad commands to avoid recursive logging, and writes through a background process so prompts do not wait on Tracepad.
-
-Attach evidence from disk or clipboard:
+Capture command outcomes:
 
 ```bash
-node ./bin/tracepad.js attach ./logs/auth.log --repo /path/to/repo --note "Stack trace from local run"
-node ./bin/tracepad.js attach --repo /path/to/repo --clip --note "Copied error payload"
+tracepad cmd "npm test" --exit-code 1 --note "Checkout test still fails"
+tracepad history --limit 20
+tracepad replay --format markdown
+```
+
+Attach evidence:
+
+```bash
+tracepad attach ./logs/server.log --note "Failure log"
+tracepad attach --clip --note "Copied stack trace"
+tracepad parse ./server.log --context-lines 3 --note "Fatal excerpt"
 ```
 
 Capture code state:
 
 ```bash
-node ./bin/tracepad.js diff --repo /path/to/repo --note "Working tree before refactor"
-node ./bin/tracepad.js diff --repo /path/to/repo --staged --note "Ready-to-commit delta"
-node ./bin/tracepad.js diff --repo /path/to/repo --commit HEAD --note "Committed fix snapshot"
+tracepad diff --note "Working tree before fix"
+tracepad diff --staged --note "Ready-to-commit delta"
+tracepad diff --commit HEAD --note "Committed fix snapshot"
 ```
 
-Trim a large log down to the failure lines that matter:
+Import browser or log evidence:
 
 ```bash
-node ./bin/tracepad.js parse ./server.log --repo /path/to/repo --context-lines 3 --max-matches 200 --note "Fatal excerpt"
+tracepad import plain-log --file ./server.log --note "Failure excerpt"
+tracepad import browser-har --file ./debug.har --note "Failed browser requests"
+tracepad import browser-capture --file ./browser-capture.json --note "Dashboard investigation"
+tracepad view-browser ./browser-capture.json
 ```
 
-`parse` streams the file line by line, so large logs do not need to fit in memory.
-
-Replay the command trail:
+Export:
 
 ```bash
-node ./bin/tracepad.js replay --repo /path/to/repo --format markdown
-node ./bin/tracepad.js replay --repo /path/to/repo --format shell --output ./repro.sh
+tracepad export --template handoff --output ./handoff.md
+tracepad export --template pr --output ./pr-brief.md
+tracepad export --template issue --output ./issue.md
+tracepad export --format html --template postmortem --output ./incident.html
+tracepad export --format json --output ./session.json
+tracepad export --exporter slack --output ./session-slack.json
 ```
 
-Export the session:
+## Command Reference
 
-```bash
-node ./bin/tracepad.js export --repo /path/to/repo --template handoff --output ./handoff.md
-node ./bin/tracepad.js export --repo /path/to/repo --template pr --output ./pr-brief.md
-node ./bin/tracepad.js export --repo /path/to/repo --template issue --output ./issue.md
-node ./bin/tracepad.js export --repo /path/to/repo --template postmortem --format html --output ./incident.html
-node ./bin/tracepad.js export --repo /path/to/repo --format json --output ./session.json
-node ./bin/tracepad.js export --repo /path/to/repo --template slack --output ./session-slack.json
-node ./bin/tracepad.js export --repo /path/to/repo --exporter slack --output ./session-slack.json
-```
-
-Run a plugin importer:
-
-```bash
-node ./bin/tracepad.js import plain-log --repo /path/to/repo --file ./server.log --note "Failure excerpt"
-```
-
-Import browser debugging evidence:
-
-```bash
-node ./bin/tracepad.js import browser-har --repo /path/to/repo --file ./debug.har --note "Failed API calls from browser devtools"
-node ./bin/tracepad.js import browser-capture --repo /path/to/repo --file ./browser-capture.json --note "Grafana/OpenShift/ArgoCD investigation"
-node ./bin/tracepad.js export --repo /path/to/repo --format html --template postmortem --output ./browser-debug.html
-```
-
-Preview a browser extension JSON export in one command:
-
-```bash
-node ./bin/tracepad.js view-browser ./browser-capture.json
-```
-
-Browser capture is generic and file-based in Phase 1. It can capture tab titles and URLs, console errors, failed network requests, HTTP 4xx/5xx events, selected text, manual notes, screenshots, and dashboard/app context from tools such as Grafana, OpenShift, ArgoCD, Kubernetes dashboards, CI/CD pages, internal admin portals, and app UIs. See [docs/browser-capture.md](docs/browser-capture.md).
-
-A no-build browser extension MVP is available in [browser-extension](browser-extension/README.md). It supports keyboard shortcuts for start/stop, selected text capture, screenshot capture, and manual note capture.
-
-Demo browser capture fixtures are available in [examples/browser-capture](examples/browser-capture/README.md), with a full runbook in [docs/browser-demo.md](docs/browser-demo.md).
-
-Close the session:
-
-```bash
-node ./bin/tracepad.js stop --repo /path/to/repo --summary "Root cause was duplicate refresh under warm cache"
-```
-
-## Commands
-
-- `init [--hooks] [--no-gitignore]`
+- `init [--hooks] [--shell [bash|zsh|powershell]] [--install-shell] [--no-gitignore]`
 - `alias setup [--shell bash|zsh|powershell] [--install]`
 - `start "title" [--context "..."]`
 - `record "title" [--context "..."] [--history-limit 12] [--no-history] [--no-status-snapshot]`
@@ -212,24 +241,7 @@ node ./bin/tracepad.js stop --repo /path/to/repo --summary "Root cause was dupli
 - `stop [summary text] [--summary "..."] [--format html|markdown|json] [--output <file>]`
 - `close [summary text] [--summary "..."]`
 
-## Git hook automation
-
-`tracepad init --hooks` installs lightweight automation into the repo's local git hooks:
-
-- `post-commit` captures `git show HEAD` into the active session
-- `post-checkout` switches the active session to the current branch, or creates one when needed
-
-This keeps Tracepad close to the actual debugging loop without a background process.
-
-`tracepad init` also updates `.gitignore` by default:
-
-- `.tracepad/state.json`
-- `.tracepad/exports/`
-- `.tracepad/artifacts/`
-
-Session JSON files are intentionally not ignored. Teams can choose whether investigation history belongs in their repo.
-
-## Plugin surface
+## Plugin Surface
 
 Built-in plugins live under:
 
@@ -241,48 +253,36 @@ Repo-local/private plugins can live under:
 - `.tracepad/plugins/importers`
 - `.tracepad/plugins/exporters`
 
-Examples included today:
+Current built-in plugins:
 
-- `plain-log` importer: extracts high-signal error lines from a text log
-- `browser-har` importer: extracts failed, slow, and high-signal browser network requests from HAR files
-- `browser-capture` importer: imports generic browser timeline exports with tabs, console errors, network failures, selected text, notes, and screenshots
-- `slack` exporter: produces Slack Block Kit JSON
+- `plain-log`: extracts high-signal error lines from text logs
+- `browser-har`: extracts failed, slow, and high-signal browser network requests from HAR files
+- `browser-capture`: imports tabs, console errors, network failures, selected text, notes, and screenshots
+- `slack`: exports Slack Block Kit JSON
 
-Plugin contracts are documented in `src/plugins/README.md` and `CONTRIBUTING.md`.
+Plugin contracts are documented in [src/plugins/README.md](src/plugins/README.md) and [CONTRIBUTING.md](CONTRIBUTING.md).
 
-## TUI
+## Git Hook Automation
 
-Open the terminal dashboard with:
+`tracepad init --hooks` installs lightweight local git hooks:
 
-```bash
-node ./bin/tracepad.js tui --repo /path/to/repo
-```
+- `post-commit` captures `git show HEAD` into the active session
+- `post-checkout` switches the active session to the current branch, or creates one when needed
 
-Hotkeys:
+This keeps Tracepad close to the actual debugging loop without a background process.
 
-- `q`: quit
-- `r`: refresh
-- `e`: export HTML handoff
-- `d`: capture a git diff snapshot
-- `n`: add a quick note
-- `[ ]`: select the timeline event to inspect
-- `j k`: scroll the preview pane
+## Data Model
 
-## Output model
-
-Tracepad stores:
+Tracepad stores local session data in:
 
 - `.tracepad/state.json`
 - `.tracepad/sessions/<session-id>.json`
 - `.tracepad/artifacts/<session-id>/...`
 - `.tracepad/exports/...`
-- `schema/session.schema.json` describes the public session format
 
-That makes sessions easy to inspect, version, or build tooling around later.
+`schema/session.schema.json` describes the public session format.
 
-## HTML diff reports
-
-HTML exports inline captured git patches as a colorized diff viewer. The report is still a single static file, so it can be shared in handoffs without a Tracepad server.
+Session JSON files are intentionally not ignored by default. Teams can choose whether investigation history belongs in their repo.
 
 ## Safety
 
@@ -294,26 +294,16 @@ Tracepad applies lightweight redaction before saving or exporting text. It scrub
 - private key blocks
 - common `password=` or `token=` style assignments
 
-This is intentionally simple and should be treated as a safety net, not a compliance boundary.
+This is a safety net, not a compliance boundary. Review exported reports before sharing them outside your team.
 
-## Timeline format
+## Roadmap Direction
 
-Exports and status views use relative timestamps so a session reads like an investigation trace:
+The local-first core is meant to stay free and useful. Future product layers can build on top of it:
 
-```text
-[+00:00:00] CONTEXT | Fails after warm cache
-[+00:04:12] FINDING | Repro only happens on second refresh
-[+00:07:35] CMD | mvn test -Dtest=AuthFlowTest | exit 1
-[+00:11:22] SNAPSHOT | git-diff | .tracepad/artifacts/...
-```
+- richer browser extension capture
+- team report sharing
+- hosted searchable archives
+- AI-assisted incident summaries
+- integrations with issue trackers and chat tools
 
-## Open-source fit
-
-Tracepad is useful for:
-
-- open-source maintainers debugging community bug reports
-- Node and Java engineers preserving repro steps
-- DevOps engineers documenting incident triage
-- reviewers who need a clear path from hypothesis to fix
-
-The free local-first core is enough for day-to-day use. Shared history, hosted archives, and team search can sit on top later without weakening the OSS base.
+The baseline promise should stay the same: developers can capture and review debugging work without giving up local control.
