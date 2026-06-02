@@ -43,21 +43,33 @@ Install directly from GitHub:
 ```bash
 npm install -g github:thassan66/tracepad
 tracepad --help
+tracepad quickstart
 ```
 
-If `tracepad` is not found after install, add npm's global bin folder to your shell path:
+If `tracepad` is not found after install, check npm's global prefix and add its `bin` directory to your shell path:
 
 ```bash
 npm config get prefix
-echo 'export PATH="$(npm config get prefix)/bin:$PATH"' >> ~/.zshrc
-source ~/.zshrc
+echo 'export PATH="$HOME/.npm-global/bin:$PATH"' >> ~/.zprofile
+source ~/.zprofile
 tracepad --help
 ```
+
+If your prefix is not `$HOME/.npm-global`, replace that path with `$(npm config get prefix)/bin`. On macOS with zsh, use `.zprofile` for login shells and `.zshrc` for interactive shell customizations.
 
 Or run from this repo:
 
 ```bash
 node ./bin/tracepad.js --help
+node ./bin/tracepad.js quickstart
+```
+
+Validate the repo before sharing a build:
+
+```bash
+npm run verify
+npm run package:validate
+npm pack --dry-run
 ```
 
 Initialize Tracepad in any repo:

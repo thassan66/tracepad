@@ -39,6 +39,9 @@ async function main() {
   const repoRoot = path.resolve(flags.repo || process.cwd());
 
   switch (command) {
+    case "quickstart":
+      handleQuickstart();
+      return;
     case "init":
       handleInit(repoRoot, flags);
       return;
@@ -167,6 +170,33 @@ function parseArgv(argv) {
   }
 
   return { command, flags, positionals };
+}
+
+function handleQuickstart() {
+  const lines = [
+    "Install:",
+    "  npm install -g github:thassan66/tracepad",
+    "  tracepad doctor",
+    "",
+    "Record a debugging session:",
+    "  tracepad init",
+    "  tracepad record \"Debug title\"",
+    "  # run normal commands, then type exit",
+    "",
+    "Review and share:",
+    "  tracepad review",
+    "  tracepad share --format pr",
+    "  tracepad share slack",
+    "",
+    "Manage generated files:",
+    "  tracepad open",
+    "  tracepad clean --dry-run",
+    "",
+    "If the command is not found after install:",
+    "  npm config get prefix",
+    "  # add that prefix's bin directory to PATH",
+  ];
+  process.stdout.write(`${renderCliPanel("Tracepad Quickstart", lines)}\n`);
 }
 
 function handleInit(repoRoot, flags) {
@@ -4456,6 +4486,9 @@ High-signal workflow:
       Close the session and write a visual HTML report.
 
 Commands:
+  quickstart
+      Print the shortest install, record, review, share, open, and clean workflow.
+
   init [--hooks] [--shell [bash|zsh|powershell]] [--install-shell] [--no-gitignore]
       Create the local .tracepad store in the target repo.
       Add --shell to install passive terminal capture. Add --hooks to install git hook automation.
@@ -4541,6 +4574,7 @@ Commands:
       Close the active session and optionally store a final summary.
 
 Examples:
+  tracepad quickstart
   tracepad doctor
   tracepad init --shell
   tracepad start "Auth refresh bug"

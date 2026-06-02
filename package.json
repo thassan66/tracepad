@@ -22,6 +22,7 @@
     "docs/*.md",
     "schema/",
     "scripts/smoke.js",
+    "scripts/validate-package.js",
     "src/plugins/",
     "CONTRIBUTING.md",
     "LICENSE",
@@ -29,8 +30,9 @@
   ],
   "scripts": {
     "test": "node ./scripts/smoke.js",
-    "verify": "node ./scripts/smoke.js && node ./scripts/validate-extension.js",
+    "verify": "node ./scripts/smoke.js && node ./scripts/validate-extension.js && node ./scripts/validate-package.js",
     "smoke": "node ./scripts/smoke.js",
+    "package:validate": "node ./scripts/validate-package.js",
     "extension:validate": "node ./scripts/validate-extension.js",
     "extension:package": "node ./scripts/package-extension.js",
     "pack:dry": "npm pack --dry-run",
