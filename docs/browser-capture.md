@@ -51,6 +51,12 @@ That command creates a Tracepad preview session, imports the JSON, generates an 
 tracepad view-browser ~/Downloads/tracepad-browser-capture.json --output ./browser-debug.html --no-open
 ```
 
+For a share-safe report, use full export redaction:
+
+```bash
+tracepad view-browser ~/Downloads/tracepad-browser-capture.json --redaction full --output ./browser-debug-safe.html --no-open
+```
+
 For an existing Tracepad session, use the lower-level import/export flow:
 
 ```bash
@@ -136,4 +142,11 @@ The importer records:
 
 ## Privacy
 
-Tracepad redacts common secret patterns before saving imported text, including bearer tokens, JWT-like tokens, API keys, password assignments, and common token query parameters. Browser capture files should still be reviewed before sharing because screenshots can contain private customer, environment, or infrastructure details.
+Tracepad redacts common secret patterns before saving imported text, including bearer tokens, JWT-like tokens, API keys, password assignments, and common token query parameters.
+
+Exports support two redaction modes:
+
+- `--redaction normal`: default mode for local debugging. Screenshots are clickable and can be opened and zoomed in the HTML report.
+- `--redaction full`: sharing mode. Tracepad scrubs personal/sensitive text more aggressively and hides screenshot/diff previews because pixels and patches can contain private customer, environment, or infrastructure details.
+
+Browser capture files should still be reviewed before sharing.

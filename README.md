@@ -134,14 +134,20 @@ The current report includes:
 - stored evidence cards
 - filterable timeline
 - inline git diff viewer
-- image artifact previews
+- clickable image artifact previews with open and zoom controls
 
 Suggested insights are local heuristics today. They compare browser signals, failed commands, captured evidence, findings, hypotheses, and decisions without sending data to an AI service. The section is designed so an opt-in AI provider can be added later.
+
+Export redaction has two modes:
+
+- `--redaction normal`: default mode, keeps useful debug context while applying the built-in secret redaction already used by Tracepad.
+- `--redaction full`: sharing mode, scrubs personal/sensitive text more aggressively and hides screenshot/diff previews because pixels and patches can contain sensitive data.
 
 Generate one manually:
 
 ```bash
 tracepad export --format html --template postmortem --output ./incident.html
+tracepad export --redaction full --format html --template postmortem --output ./share-safe-incident.html
 open ./incident.html
 ```
 
@@ -215,6 +221,7 @@ tracepad export --template handoff --output ./handoff.md
 tracepad export --template pr --output ./pr-brief.md
 tracepad export --template issue --output ./issue.md
 tracepad export --format html --template postmortem --output ./incident.html
+tracepad export --redaction full --format html --template postmortem --output ./share-safe-incident.html
 tracepad export --format json --output ./session.json
 tracepad export --exporter slack --output ./session-slack.json
 ```
@@ -235,13 +242,13 @@ tracepad export --exporter slack --output ./session-slack.json
 - `history [--shell powershell|bash|zsh] [--file <history-path>] [--limit <n>]`
 - `parse <log-file> [--context-lines 2] [--max-matches 200] [--note "..."]`
 - `import <importer-name> [--file <path>] [--note "..."]`
-- `view-browser <browser-capture.json> [--output <file>] [--no-open]`
+- `view-browser <browser-capture.json> [--output <file>] [--redaction normal|full] [--no-open]`
 - `replay [session-id] [--format shell|markdown] [--output <file>]`
 - `diff [--staged] [--commit <ref>] [--note "..."]`
 - `capture`
 - `attach <file-path> [--note "..."] [--clip]`
-- `export [session-id] [--format markdown|html|json] [--template handoff|issue|pr|postmortem|slack] [--exporter <name>] [--output <file>]`
-- `stop [summary text] [--summary "..."] [--format html|markdown|json] [--output <file>]`
+- `export [session-id] [--format markdown|html|json] [--template handoff|issue|pr|postmortem|slack] [--redaction normal|full] [--exporter <name>] [--output <file>]`
+- `stop [summary text] [--summary "..."] [--format html|markdown|json] [--redaction normal|full] [--output <file>]`
 - `close [summary text] [--summary "..."]`
 
 ## Plugin Surface

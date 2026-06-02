@@ -19,6 +19,14 @@ tracepad export --format html --template postmortem --output ./checkout-demo-pos
 open ./checkout-demo-postmortem.html
 ```
 
+For a share-safe report, use full export redaction:
+
+```bash
+tracepad view-browser /path/to/tracepad/examples/browser-capture/checkout-incident.capture.json --redaction full --output ./checkout-demo-safe.html
+```
+
+Normal redaction keeps useful debugging context and applies built-in secret scrubbing. Full redaction aggressively scrubs personal/sensitive text and hides screenshot/diff previews because pixels and patches can contain sensitive data.
+
 The demo models a common investigation path:
 
 - Grafana shows checkout latency.
@@ -36,4 +44,5 @@ The browser capture JSON fixture is intentionally not meant to be read directly.
 - captured tabs and URLs
 - console and failed network signals
 - filterable timeline events
+- clickable screenshot previews with open and zoom controls
 - stored evidence under `.tracepad/artifacts`
