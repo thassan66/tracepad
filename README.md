@@ -204,6 +204,18 @@ tracepad share slack
 tracepad share ai --redaction full --output ./ai-safe-prompt.md
 ```
 
+Reopen and clean generated local files:
+
+```bash
+tracepad open
+tracepad open --latest-screenshot
+tracepad clean --dry-run
+tracepad clean --browser-captures --dry-run
+tracepad clean --exports --yes
+```
+
+`clean` never removes session history by default. Deletion requires `--yes` and an explicit scope such as `--exports`, `--browser-captures`, or `--all-generated`.
+
 ## Terminal Dashboard
 
 Open a local terminal dashboard:
@@ -291,6 +303,8 @@ tracepad export --template pr --output ./pr-brief.md
 tracepad export --template issue --output ./issue.md
 tracepad share --format pr
 tracepad share slack
+tracepad open
+tracepad clean --exports --dry-run
 tracepad export --format html --template postmortem --output ./incident.html
 tracepad export --redaction full --format html --template postmortem --output ./share-safe-incident.html
 tracepad review
@@ -316,6 +330,8 @@ tracepad export --exporter slack --output ./session-slack.json
 - `parse <log-file> [--context-lines 2] [--max-matches 200] [--note "..."]`
 - `review [session-id] [--output <file>] [--redaction normal|full] [--no-open]`
 - `share [session-id|all|pr|jira|slack|ai|checklist] [--format all|pr|jira|slack|ai|checklist] [--redaction normal|full] [--output <file>]`
+- `open [--latest-report|--latest-session|--latest-screenshot] [--no-open]`
+- `clean [--dry-run] [--exports] [--browser-captures] [--all-generated] [--yes]`
 - `import <importer-name> [--file <path>] [--note "..."]`
 - `view-browser <browser-capture.json> [--output <file>] [--redaction normal|full] [--no-open]`
 - `replay [session-id] [--format shell|markdown] [--output <file>]`
