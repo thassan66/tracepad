@@ -21,6 +21,42 @@
     "default_popup": "popup.html",
     "default_title": "Tracepad Capture"
   },
+  "commands": {
+    "toggle-capture": {
+      "suggested_key": {
+        "default": "Alt+Shift+T",
+        "mac": "Alt+Shift+T"
+      },
+      "description": "Start or stop Tracepad browser capture"
+    },
+    "capture-selection": {
+      "suggested_key": {
+        "default": "Alt+Shift+S",
+        "mac": "Alt+Shift+S"
+      },
+      "description": "Capture selected text"
+    },
+    "capture-screenshot": {
+      "suggested_key": {
+        "default": "Alt+Shift+P",
+        "mac": "Alt+Shift+P"
+      },
+      "description": "Capture a visible-tab screenshot"
+    },
+    "add-note": {
+      "suggested_key": {
+        "default": "Alt+Shift+N",
+        "mac": "Alt+Shift+N"
+      },
+      "description": "Prompt for a manual note"
+    },
+    "export-capture": {
+      "description": "Export Tracepad browser capture JSON"
+    },
+    "clear-capture": {
+      "description": "Clear Tracepad browser capture state"
+    }
+  },
   "content_scripts": [
     {
       "matches": [

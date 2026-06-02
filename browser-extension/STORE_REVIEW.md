@@ -32,6 +32,11 @@ Tracepad Browser Capture is a local-first debugging aid. It records browser evid
 - Trigger a failed request or HTTP 4xx/5xx response and confirm it appears in export.
 - Trigger `console.error("tracepad test")` and confirm it appears in export when page hook injection is allowed.
 - Use **Add Note** and confirm the note appears in export.
+- Use `Alt+Shift+T` to start or stop capture.
+- Use `Alt+Shift+S` to capture selected text.
+- Use `Alt+Shift+P` to capture a visible-tab screenshot.
+- Use `Alt+Shift+N` to prompt for and save a manual note.
+- Verify shortcut customization is available under `chrome://extensions/shortcuts`.
 - Use **Export** and import the JSON with `tracepad import browser-capture --file <downloaded-json>`.
 - Use **Clear capture** and verify state resets.
 
