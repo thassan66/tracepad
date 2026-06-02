@@ -87,6 +87,12 @@ async function main() {
     case "share":
       handleShare(repoRoot, args, flags);
       return;
+    case "open":
+      handleOpen(repoRoot, flags);
+      return;
+    case "clean":
+      handleClean(repoRoot, flags);
+      return;
     case "import":
       await handlePluginImport(repoRoot, args, flags);
       return;
@@ -641,6 +647,67 @@ function handleShare(repoRoot, args, flags) {
   fs.mkdirSync(path.dirname(outputPath), { recursive: true });
   fs.writeFileSync(outputPath, `${output}\n`, "utf8");
   process.stdout.write(`Shared ${format} handoff for ${session.id} to ${outputPath} (redaction: ${redaction})\n`);
+}
+
+function handleOpen(repoRoot, flags) {
+  ensureStore(repoRoot);
+  const target = resolveOpenTarget(repoRoot, flags);
+  if (!target) {
+    fail("Nothing to open yet. Generate a report with: tracepad review");
+  }
+
+  const lines = [
+    `Target: ${target.label}`,
+    `Path: ${target.path}`,
+  ];
+
+  if (flags["no-open"] || flags.print) {
+    lines.push("Open skipped by flag.");
+  } else {
+    const opened = openFile(target.path);
+    lines.push(opened ? "Opened target." : "Could not auto-open the target. Open the path above manually.");
+  }
+
+  process.stdout.write(`${renderCliPanel("Tracepad Open", lines)}\n`);
+}
+
+function handleClean(repoRoot, flags) {
+  ensureStore(repoRoot);
+  const explicitScope = flags.exports || flags["browser-captures"] || flags["all-generated"];
+  if (flags.yes && !explicitScope) {
+    fail("Refusing to delete without an explicit scope. Use --exports, --browser-captures, or --all-generated with --yes.");
+  }
+  const plan = buildCleanPlan(repoRoot, flags);
+  const dryRun = flags["dry-run"] || !flags.yes;
+  const lines = [];
+
+  if (plan.length === 0) {
+    lines.push("No generated files matched the selected cleanup scope.");
+  } else {
+    lines.push(`${dryRun ? "Would remove" : "Removing"} ${plan.length} generated file(s):`);
+    for (const item of plan.slice(0, 40)) {
+      lines.push(`  ${item.kind}: ${item.path}`);
+    }
+    if (plan.length > 40) {
+      lines.push(`  ... ${plan.length - 40} more`);
+    }
+  }
+
+  if (dryRun) {
+    lines.push("");
+    lines.push("Dry run only. Add --yes with an explicit scope to delete.");
+    lines.push("Examples:");
+    lines.push("  tracepad clean --exports --yes");
+    lines.push("  tracepad clean --browser-captures --yes");
+  } else {
+    for (const item of plan) {
+      fs.rmSync(item.path, { force: true });
+    }
+    lines.push("");
+    lines.push("Cleanup complete.");
+  }
+
+  process.stdout.write(`${renderCliPanel("Tracepad Clean", lines)}\n`);
 }
 
 async function handlePluginImport(repoRoot, args, flags) {
@@ -3448,6 +3515,131 @@ function listSessions(repoRoot) {
     .map((entry) => readJson(path.join(sessionsDir(repoRoot), entry.name)));
 }
 
+function resolveOpenTarget(repoRoot, flags) {
+  if (flags["latest-session"]) {
+    const sessionFile = latestFileInDir(sessionsDir(repoRoot), (filePath) => filePath.endsWith(".json"));
+    return sessionFile ? { label: "Latest session JSON", path: sessionFile } : null;
+  }
+
+  if (flags["latest-screenshot"]) {
+    const screenshot = latestFileRecursive(artifactsDir(repoRoot), (filePath) => /\.(png|jpe?g|webp|gif)$/i.test(filePath));
+    return screenshot ? { label: "Latest screenshot artifact", path: screenshot } : null;
+  }
+
+  const report = latestFileInDir(exportsDir(repoRoot), (filePath) => filePath.endsWith(".html"));
+  if (report) {
+    return { label: "Latest visual report", path: report };
+  }
+
+  if (flags["latest-report"]) {
+    return null;
+  }
+
+  try {
+    const session = resolveReviewSession(repoRoot, [], {});
+    const outputPath = defaultExportPath(repoRoot, session.id, "html");
+    fs.mkdirSync(path.dirname(outputPath), { recursive: true });
+    fs.writeFileSync(outputPath, `${renderExport(session, { format: "html", template: "handoff" })}\n`, "utf8");
+    return { label: "Generated visual report", path: outputPath };
+  } catch (error) {
+    return null;
+  }
+}
+
+function buildCleanPlan(repoRoot, flags) {
+  const explicitScope = flags.exports || flags["browser-captures"] || flags["all-generated"];
+  const includeExports = flags.exports || flags["all-generated"] || !explicitScope;
+  const includeBrowserCaptures = flags["browser-captures"] || flags["all-generated"] || !explicitScope;
+  const plan = [];
+
+  if (includeExports && fs.existsSync(exportsDir(repoRoot))) {
+    for (const filePath of listFilesRecursive(exportsDir(repoRoot), () => true)) {
+      plan.push({ kind: "export", path: filePath });
+    }
+  }
+
+  if (includeBrowserCaptures) {
+    for (const filePath of listBrowserCaptureFiles(repoRoot)) {
+      plan.push({ kind: "browser-capture", path: filePath });
+    }
+  }
+
+  return uniqueFilePlan(plan);
+}
+
+function listBrowserCaptureFiles(repoRoot) {
+  return listFilesRecursive(repoRoot, (filePath) => /(^|\/)tracepad-browser-capture-[^/]+\.json$/i.test(toSlash(path.relative(repoRoot, filePath))), {
+    skipDirs: new Set([".git", "node_modules", ".tracepad", "dist"]),
+  });
+}
+
+function latestFileInDir(dir, predicate) {
+  if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) {
+    return "";
+  }
+  return newestFile(fs.readdirSync(dir).map((name) => path.join(dir, name)).filter((filePath) => {
+    try {
+      return fs.statSync(filePath).isFile() && predicate(filePath);
+    } catch (error) {
+      return false;
+    }
+  }));
+}
+
+function latestFileRecursive(dir, predicate) {
+  return newestFile(listFilesRecursive(dir, predicate));
+}
+
+function newestFile(files) {
+  let newest = "";
+  let newestTime = -1;
+  for (const filePath of files) {
+    try {
+      const mtime = fs.statSync(filePath).mtimeMs;
+      if (mtime > newestTime) {
+        newest = filePath;
+        newestTime = mtime;
+      }
+    } catch (error) {
+      // Ignore files that disappear during scanning.
+    }
+  }
+  return newest;
+}
+
+function listFilesRecursive(dir, predicate, options) {
+  const output = [];
+  const skipDirs = options && options.skipDirs ? options.skipDirs : new Set();
+  if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) {
+    return output;
+  }
+
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const itemPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      if (!skipDirs.has(entry.name)) {
+        output.push(...listFilesRecursive(itemPath, predicate, options));
+      }
+    } else if (entry.isFile() && predicate(itemPath)) {
+      output.push(itemPath);
+    }
+  }
+  return output;
+}
+
+function uniqueFilePlan(plan) {
+  const seen = new Set();
+  const output = [];
+  for (const item of plan) {
+    if (seen.has(item.path)) {
+      continue;
+    }
+    seen.add(item.path);
+    output.push(item);
+  }
+  return output.sort((left, right) => left.path.localeCompare(right.path));
+}
+
 function touchSession(session) {
   session.updatedAt = isoNow();
 }
@@ -3973,6 +4165,10 @@ function sanitizeFileName(value) {
   return value.replace(/[^a-zA-Z0-9._-]+/g, "-");
 }
 
+function toSlash(value) {
+  return String(value || "").replace(/\\/g, "/");
+}
+
 function shellQuote(value) {
   return `'${String(value).replace(/'/g, "'\\''")}'`;
 }
@@ -4314,6 +4510,12 @@ Commands:
   share [session-id|all|pr|jira|slack|ai|checklist] [--format all|pr|jira|slack|ai|checklist] [--redaction normal|full] [--output <file>]
       Print or write copy-ready handoff text for PRs, issues, Slack, AI prompts, and reviewer checklists.
 
+  open [--latest-report|--latest-session|--latest-screenshot] [--no-open]
+      Open the latest visual report, session JSON, or screenshot artifact. Defaults to latest report.
+
+  clean [--dry-run] [--exports] [--browser-captures] [--all-generated] [--yes]
+      Preview or remove generated reports and Tracepad browser capture JSON files. Deletion requires --yes and an explicit scope.
+
   import <importer-name> [--file <path>] [--note "why this matters"]
       Run an importer plugin from src/plugins/importers or .tracepad/plugins/importers.
 
@@ -4355,6 +4557,8 @@ Examples:
   tracepad review
   tracepad share --format pr
   tracepad share slack
+  tracepad open
+  tracepad clean --browser-captures --dry-run
   tracepad import plain-log --file ./logs/server.log --note "Failure excerpt"
   tracepad import browser-har --file ./debug.har --note "Browser network failures"
   tracepad import browser-capture --file ./browser-capture.json --note "Dashboard/browser investigation"

@@ -189,6 +189,14 @@ try {
   assert(reviewHtml.includes("AI Handoff Prompt"), "review dashboard did not include the AI handoff prompt");
   assert(reviewHtml.includes("Search timeline"), "review dashboard did not include timeline search");
 
+  const openReportOutput = run(["open", "--repo", tempRoot, "--latest-report", "--no-open"]);
+  assert(openReportOutput.includes("Tracepad Open"), "open report did not render the CLI open panel");
+  assert(openReportOutput.includes("Latest visual report"), "open report did not target the latest visual report");
+  const openSessionOutput = run(["open", "--repo", tempRoot, "--latest-session", "--no-open"]);
+  assert(openSessionOutput.includes("Latest session JSON"), "open session did not target the latest session JSON");
+  const openScreenshotOutput = run(["open", "--repo", tempRoot, "--latest-screenshot", "--no-open"]);
+  assert(openScreenshotOutput.includes("Latest screenshot artifact"), "open screenshot did not target the latest screenshot artifact");
+
   const prShare = run(["share", "--repo", tempRoot, "--format", "pr"]);
   assert(prShare.includes("## Summary"), "PR share output did not include summary section");
   assert(prShare.includes("## Debug Evidence"), "PR share output did not include evidence section");
@@ -219,6 +227,18 @@ try {
   const recordHtml = fs.readFileSync(recordPath, "utf8");
   assert(recordHtml.includes("Scripted recorder smoke"), "record dashboard did not include the session title");
   assert(recordHtml.includes("process.exit(0)"), "record dashboard did not include the recorded command");
+
+  const generatedCapture = path.join(tempRoot, "tracepad-browser-capture-smoke.json");
+  fs.writeFileSync(generatedCapture, JSON.stringify({ source: "tracepad-browser-extension" }), "utf8");
+  const cleanDryRunOutput = run(["clean", "--repo", tempRoot, "--browser-captures", "--dry-run"]);
+  assert(cleanDryRunOutput.includes("Tracepad Clean"), "clean dry-run did not render the CLI clean panel");
+  assert(cleanDryRunOutput.includes("Would remove"), "clean dry-run did not preview matching files");
+  assert(fs.existsSync(generatedCapture), "clean dry-run removed a browser capture file");
+  const cleanDeleteOutput = run(["clean", "--repo", tempRoot, "--browser-captures", "--yes"]);
+  assert(cleanDeleteOutput.includes("Cleanup complete"), "clean delete did not confirm cleanup");
+  assert(!fs.existsSync(generatedCapture), "clean delete did not remove the generated browser capture file");
+  const cleanExportsDryRunOutput = run(["clean", "--repo", tempRoot, "--exports", "--dry-run"]);
+  assert(cleanExportsDryRunOutput.includes("export:"), "clean exports dry-run did not include export files");
 
   const tracepadText = readAllText(path.join(tempRoot, ".tracepad"));
   assert(tracepadText.includes("access_token=[REDACTED]"), "expected redacted access_token in Tracepad store");
