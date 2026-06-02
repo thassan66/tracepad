@@ -9,7 +9,8 @@ tracepad init
 tracepad start "Checkout latency demo"
 tracepad import browser-capture --file /path/to/tracepad/examples/browser-capture/checkout-incident.capture.json --note "Demo browser session"
 tracepad import browser-har --file /path/to/tracepad/examples/browser-capture/checkout-incident.har --note "Demo browser HAR"
-tracepad export --template postmortem --output ./checkout-demo-postmortem.md
+tracepad export --format html --template postmortem --output ./checkout-demo-postmortem.html
+open ./checkout-demo-postmortem.html
 ```
 
 The demo models a common investigation path:
@@ -21,3 +22,5 @@ The demo models a common investigation path:
 - A browser network request returns HTTP 503.
 
 The sample token-like query value is intentionally fake and should be redacted by Tracepad on import.
+
+The browser capture JSON fixture is intentionally not meant to be read directly. Import it into a Tracepad session, then generate an HTML or Markdown report.

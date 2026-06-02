@@ -21,12 +21,9 @@ Type "node ../../../bin/tracepad.js alias setup --shell bash > /tmp/tracepad-hoo
 Enter
 Sleep 700ms
 
-Type "node ../../../bin/tracepad.js record 'Checkout timeout after deploy' --no-history"
+Type "node ../../../bin/tracepad.js start 'Checkout timeout after deploy'"
 Enter
 Sleep 900ms
-Type "quit"
-Enter
-Sleep 700ms
 
 Type "npm test -- checkout-timeout || true"
 Enter
@@ -37,6 +34,10 @@ Enter
 Sleep 800ms
 
 Type "node ../../../bin/tracepad.js parse ./logs/server.log --context-lines 2 --max-matches 5 --note 'server failure excerpt'"
+Enter
+Sleep 900ms
+
+Type "node ../../../bin/tracepad.js import browser-capture --file ../../../examples/browser-capture/checkout-incident.capture.json --note 'browser dashboard evidence'"
 Enter
 Sleep 900ms
 

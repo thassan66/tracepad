@@ -2,10 +2,11 @@
 
 The launch README should show Tracepad as a short terminal story:
 
-1. Start a debugging session with `tracepad record`.
-2. Capture a normal command.
-3. Add a hypothesis.
-4. Open the TUI.
+1. Initialize Tracepad with passive shell capture.
+2. Start a debugging session.
+3. Run normal terminal commands.
+4. Import browser/demo evidence.
+5. Export a visual report and open the TUI.
 
 ## Generate
 
@@ -43,10 +44,11 @@ The recording shows:
 
 - `tracepad init --hooks`
 - `tracepad alias setup --shell bash`
-- `tracepad record`
+- `tracepad start`
 - a normal `npm test` command captured by passive shell integration
 - `tracepad note --kind hypothesis`
 - `tracepad parse`
+- `tracepad import browser-capture`
 - `tracepad diff`
 - `tracepad replay`
 - JSON, Slack, and HTML exports
