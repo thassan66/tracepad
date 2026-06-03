@@ -74,6 +74,8 @@ npm pack --dry-run
 
 Release notes and the release checklist live in [CHANGELOG.md](CHANGELOG.md) and [docs/release-readiness.md](docs/release-readiness.md).
 
+For real-world feedback before adding more features, use [docs/dogfood-notes.md](docs/dogfood-notes.md).
+
 Initialize Tracepad in any repo:
 
 ```bash
