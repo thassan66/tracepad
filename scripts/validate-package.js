@@ -2,6 +2,7 @@
 
 const childProcess = require("child_process");
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 
 const root = path.resolve(__dirname, "..");
@@ -71,6 +72,20 @@ for (const filePath of requiredPackageFiles) {
 for (const item of packageFiles) {
   assert(!item.startsWith(".tracepad/"), "Package must not include local .tracepad data.");
   assert(!/^examples\/browser-capture\/tracepad-browser-capture-.*\.json$/.test(item), "Package must not include generated browser captures.");
+}
+
+const packagedShape = fs.mkdtempSync(path.join(os.tmpdir(), "tracepad-package-shape-"));
+try {
+  fs.mkdirSync(path.join(packagedShape, "bin"), { recursive: true });
+  fs.copyFileSync(path.join(root, "bin", "tracepad.js"), path.join(packagedShape, "bin", "tracepad.js"));
+  const doctorOutput = childProcess.execFileSync(process.execPath, [path.join(packagedShape, "bin", "tracepad.js"), "doctor", "--repo", packagedShape], {
+    cwd: packagedShape,
+    encoding: "utf8",
+  });
+  assert(doctorOutput.includes("INFO Browser extension: optional"), "Packaged CLI doctor should not warn when extension source is not bundled.");
+  assert(doctorOutput.includes("INFO Extension package: optional"), "Packaged CLI doctor should not warn when extension zip is not bundled.");
+} finally {
+  fs.rmSync(packagedShape, { recursive: true, force: true });
 }
 
 process.stdout.write("tracepad package validation ok\n");
