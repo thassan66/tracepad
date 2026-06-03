@@ -9,6 +9,7 @@ const packagePath = path.join(root, "package.json");
 const packageJson = JSON.parse(fs.readFileSync(packagePath, "utf8"));
 
 const requiredPackageFiles = [
+  "CHANGELOG.md",
   "README.md",
   "LICENSE",
   "package.json",
@@ -17,6 +18,7 @@ const requiredPackageFiles = [
   "schema/session.schema.json",
   "scripts/smoke.js",
   "scripts/validate-package.js",
+  "docs/release-readiness.md",
   "src/plugins/importers/browser-capture.js",
   "src/plugins/importers/browser-har.js",
   "src/plugins/importers/plain-log.js",
@@ -33,6 +35,9 @@ assert(packageJson.name === "tracepad", "Unexpected package name.");
 assert(packageJson.version, "Package version is required.");
 assert(packageJson.bin && packageJson.bin.tracepad === "./bin/tracepad", "tracepad bin must point to ./bin/tracepad.");
 assert(packageJson.engines && packageJson.engines.node, "Node engine range is required.");
+
+const cliSource = fs.readFileSync(path.join(root, "bin", "tracepad.js"), "utf8");
+assert(cliSource.includes(`const TOOL_VERSION = "${packageJson.version}"`), "CLI TOOL_VERSION must match package.json version.");
 
 const binPath = path.join(root, packageJson.bin.tracepad);
 assert(fs.existsSync(binPath), "Package bin target is missing.");

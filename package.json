@@ -1,6 +1,6 @@
 {
   "name": "tracepad",
-  "version": "0.5.1",
+  "version": "0.6.0",
   "description": "Debugging flight recorder CLI for handoffs, PR briefs, incident replay, and reproducible investigation trails.",
   "author": "Taimoor Hassan",
   "homepage": "https://github.com/thassan66/tracepad#readme",
@@ -24,6 +24,7 @@
     "scripts/smoke.js",
     "scripts/validate-package.js",
     "src/plugins/",
+    "CHANGELOG.md",
     "CONTRIBUTING.md",
     "LICENSE",
     "README.md"

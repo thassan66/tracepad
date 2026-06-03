@@ -72,6 +72,8 @@ npm run package:validate
 npm pack --dry-run
 ```
 
+Release notes and the release checklist live in [CHANGELOG.md](CHANGELOG.md) and [docs/release-readiness.md](docs/release-readiness.md).
+
 Initialize Tracepad in any repo:
 
 ```bash
@@ -399,6 +401,8 @@ Session JSON files are intentionally not ignored by default. Teams can choose wh
 
 ## Safety
 
+Tracepad is local-first. It has no hosted backend, account system, analytics, telemetry, or cloud sync.
+
 Tracepad applies lightweight redaction before saving or exporting text. It scrubs common secret patterns such as:
 
 - AWS access keys
@@ -407,7 +411,7 @@ Tracepad applies lightweight redaction before saving or exporting text. It scrub
 - private key blocks
 - common `password=` or `token=` style assignments
 
-This is a safety net, not a compliance boundary. Review exported reports before sharing them outside your team.
+This is a safety net, not a compliance boundary. Screenshots, diffs, logs, paths, and copied text may still contain sensitive data. Use `--redaction full` for external sharing and review exported reports before sharing them outside your trusted team.
 
 ## Roadmap Direction
 

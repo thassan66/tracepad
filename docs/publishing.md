@@ -8,6 +8,7 @@ Run the local validation suite:
 
 ```bash
 npm run verify
+npm run package:validate
 npm run pack:dry
 npm run extension:package
 ```
@@ -25,6 +26,7 @@ The package should include:
 - `schema/`
 - `docs/*.md`
 - `README.md`
+- `CHANGELOG.md`
 - `CONTRIBUTING.md`
 - `LICENSE`
 
@@ -80,8 +82,8 @@ For npm publishing through GitHub Actions, add an `NPM_TOKEN` repository secret 
 For GitHub release artifacts, push a version tag:
 
 ```bash
-git tag v0.5.1
-git push origin v0.5.1
+git tag v0.6.0
+git push origin v0.6.0
 ```
 
 The release workflow attaches:

@@ -7,7 +7,7 @@ const path = require("path");
 const readline = require("readline");
 
 const TOOL_NAME = "Tracepad";
-const TOOL_VERSION = "0.5.1";
+const TOOL_VERSION = "0.6.0";
 const NOTE_KINDS = new Set(["note", "finding", "hypothesis", "decision", "blocker", "context"]);
 const EXPORT_TEMPLATES = new Set(["handoff", "issue", "pr", "postmortem", "slack"]);
 const EXPORT_FORMATS = new Set(["markdown", "html", "json"]);
