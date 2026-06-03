@@ -3695,7 +3695,13 @@ function buildDoctorRows(repoRoot, flags) {
   const storeExists = fs.existsSync(storeDir(repoRoot));
   const stateExists = fs.existsSync(path.join(storeDir(repoRoot), "state.json"));
   const extensionManifest = path.join(root, "browser-extension", "manifest.json");
+  const hasExtensionSource = fs.existsSync(extensionManifest);
   const extensionZip = fs.existsSync(path.join(root, "dist", "tracepad-browser-extension-0.1.0.zip"));
+  const extensionPackageRow = !hasExtensionSource
+    ? { status: "INFO", label: "Extension package", detail: "optional; build from a repo checkout with npm run extension:package" }
+    : extensionZip
+      ? { status: "OK", label: "Extension package", detail: "dist zip exists" }
+      : { status: "WARN", label: "Extension package", detail: "run npm run extension:package when needed" };
 
   rows.push({ status: "OK", label: "Node", detail: process.version });
   rows.push(git.status === 0
@@ -3719,12 +3725,10 @@ function buildDoctorRows(repoRoot, flags) {
   rows.push(storeExists && stateExists
     ? { status: "OK", label: "Repo store", detail: storeDir(repoRoot) }
     : { status: "WARN", label: "Repo store", detail: "not initialized; run tracepad init" });
-  rows.push(fs.existsSync(extensionManifest)
+  rows.push(hasExtensionSource
     ? { status: "OK", label: "Browser extension", detail: "manifest found" }
-    : { status: "WARN", label: "Browser extension", detail: "manifest missing" });
-  rows.push(extensionZip
-    ? { status: "OK", label: "Extension package", detail: "dist zip exists" }
-    : { status: "WARN", label: "Extension package", detail: "run npm run extension:package when needed" });
+    : { status: "INFO", label: "Browser extension", detail: "optional; extension source is available from a repo checkout" });
+  rows.push(extensionPackageRow);
 
   return rows;
 }
